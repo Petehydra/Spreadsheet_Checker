@@ -1,73 +1,116 @@
-# Welcome to your Lovable project
+# Spreadsheet Checker
 
-## Project info
+A client-side web application for comparing multiple spreadsheets with custom column and row comparisons. All file processing and comparisons happen entirely in your browser for maximum privacy and security.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+## Features
 
-## How can I edit this code?
+- **Multiple Spreadsheet Upload** - Upload any number of .xlsx, .xls, or .csv files
+- **Interactive Element Selection** - Select which spreadsheets, sheets, columns, and rows to compare
+- **Flexible Comparison Rules** - Build multi-step comparison workflows with 4 comparison methods:
+  - **Equals** - Check if values match exactly
+  - **Contains** - Check if target contains source values
+  - **Lookup** - Find matching values across datasets
+  - **Validate** - Validate that source values are non-empty
+- **Results Dashboard** - View summary statistics and detailed matches/mismatches
+- **100% Client-Side** - Your files never leave your browser - maximum privacy
 
-There are several ways of editing your application.
+## Technology Stack
 
-**Use Lovable**
+- **Vite + React 18** - Fast, modern frontend framework
+- **TypeScript** - Type-safe development
+- **Tailwind CSS** - Utility-first styling
+- **shadcn/ui** - Beautiful, accessible UI components
+- **xlsx** - Client-side spreadsheet parsing
+- **React Context API** - In-memory state management
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Getting Started
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- Node.js 18+ and npm installed
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
+### Installation
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+# Navigate to the frontend directory
+cd frontend
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Install dependencies
+npm install
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Start the development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The application will be available at `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Building for Production
 
-**Use GitHub Codespaces**
+```sh
+cd frontend
+npm run build
+npm run preview
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Usage Guide
 
-## What technologies are used for this project?
+### 1. Upload Spreadsheets
 
-This project is built with:
+- Click "Upload files" or drag and drop files onto the upload zone
+- Upload at least 2 spreadsheet files (.xlsx, .xls, or .csv)
+- Files are parsed immediately in your browser
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+### 2. Select Elements
 
-## How can I deploy this project?
+- Click "Select Spreadsheets to Compare"
+- Expand each spreadsheet to see its sheets
+- Select sheets, columns, and rows you want to compare
+- Must select elements from at least 2 different spreadsheets or sheets
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+### 3. Configure Comparison Rules
 
-## Can I connect a custom domain to my Lovable project?
+- Choose element type (Column or Row)
+- Select comparison method (Equals, Contains, Lookup, Validate)
+- Pick source spreadsheet, sheet, and element
+- Pick target spreadsheet, sheet, and element
+- Add multiple rules to build a workflow
+- Reorder rules using up/down arrows
 
-Yes, you can!
+### 4. Execute and View Results
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+- Click "Execute Comparison" to run all rules
+- View summary statistics (total, passed, failed)
+- Expand each rule to see detailed matches and mismatches
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Security & Privacy
+
+**Your data is 100% safe and private:**
+
+- All file processing happens in your browser using JavaScript
+- Files are never uploaded to any server
+- No data is stored on any external system
+- Data is cleared when you close or refresh the page
+- Works offline after initial page load
+
+## Project Structure
+
+```
+/
+├── frontend/           # Vite + React application
+│   ├── src/
+│   │   ├── components/ # UI components
+│   │   ├── pages/      # Route pages
+│   │   ├── contexts/   # React Context providers
+│   │   ├── services/   # Business logic
+│   │   └── hooks/      # Custom React hooks
+├── shared/             # Shared TypeScript types
+└── docs/               # Documentation
+```
+
+## Contributing
+
+This project follows standard TypeScript and React best practices. Keep files under 300 lines and maintain clear separation of concerns.
+
+## License
+
+Private project

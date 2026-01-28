@@ -6,9 +6,10 @@ import IllustrationCard from "@/components/IllustrationCard";
 
 interface HeroSectionProps {
   onFilesSelected: (files: File[]) => void;
+  isUploading?: boolean;
 }
 
-const HeroSection = ({ onFilesSelected }: HeroSectionProps) => {
+const HeroSection = ({ onFilesSelected, isUploading = false }: HeroSectionProps) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleButtonClick = () => {
@@ -52,8 +53,9 @@ const HeroSection = ({ onFilesSelected }: HeroSectionProps) => {
                 size="xl" 
                 onClick={handleButtonClick}
                 className="w-full sm:w-auto"
+                disabled={isUploading}
               >
-                Upload files
+                {isUploading ? 'Processing...' : 'Upload files'}
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
               <DragDropZone onFilesDropped={onFilesSelected} />
