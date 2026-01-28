@@ -48,9 +48,11 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
     // Initialize empty selection for this spreadsheet
     setSelections(prev => [...prev, {
       spreadsheetId: spreadsheet.id,
+      isSelected: false,
       selectedSheets: [],
       selectedColumns: [],
-      selectedRows: []
+      selectedRows: [],
+      hasHeader: null
     }]);
   }, []);
   
@@ -79,9 +81,11 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
       if (!existing) {
         return [...prev, {
           spreadsheetId,
+          isSelected: selection.isSelected !== undefined ? selection.isSelected : false,
           selectedSheets: selection.selectedSheets || [],
           selectedColumns: selection.selectedColumns || [],
-          selectedRows: selection.selectedRows || []
+          selectedRows: selection.selectedRows || [],
+          hasHeader: selection.hasHeader !== undefined ? selection.hasHeader : null
         }];
       }
       
@@ -98,7 +102,8 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
       spreadsheetId: s.id,
       selectedSheets: [],
       selectedColumns: [],
-      selectedRows: []
+      selectedRows: [],
+      hasHeader: null
     })));
     setComparisonRules([]);
   }, [spreadsheets]);

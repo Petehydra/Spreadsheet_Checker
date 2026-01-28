@@ -68,9 +68,11 @@ export interface SheetMetadata {
 // Selection state for comparison configuration
 export interface SpreadsheetSelection {
   spreadsheetId: string;
-  selectedSheets: string[]; // Sheet names
+  isSelected: boolean; // Whether the spreadsheet checkbox is checked
+  selectedSheets: string[]; // Sheet names (only one can be selected)
   selectedColumns: ColumnSelection[];
   selectedRows: number[]; // Row indices
+  hasHeader?: boolean | null; // Whether the spreadsheet has a header row (null = not set)
 }
 
 export interface ColumnSelection {

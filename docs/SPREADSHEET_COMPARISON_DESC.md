@@ -1,14 +1,15 @@
 # Spreadsheet Column Comparison – Functional Specification
 
 ## Overview
+
 The system allows a user to upload multiple spreadsheets and define custom comparison rules between selected columns and rows across the spreadsheets. The comparison logic must support simple one-to-one comparisons as well as multi-step, ordered comparison workflows. All uploaded spreadsheets are registered by the program, including their complete structure (columns and rows), enabling flexible cross-spreadsheet analysis.
 
 ---
 
 ## User Story
 
-As a user,  
-I want to upload multiple spreadsheet files and define which columns and rows should be compared,  
+As a user,
+I want to upload multiple spreadsheet files and define which columns and rows should be compared,
 so that I can validate, match, or cross-check values between the spreadsheets based on custom rules and comparison order.
 
 ---
@@ -32,6 +33,7 @@ so that I can validate, match, or cross-check values between the spreadsheets ba
 ## Functional Requirements
 
 ### File Upload
+
 - The user must be able to upload **multiple spreadsheet files** (two or more).
 - Supported formats should include common spreadsheet types (e.g. `.xlsx`, `.csv`).
 - All uploaded files must be parsed and **registered** by the program, including:
@@ -39,23 +41,8 @@ so that I can validate, match, or cross-check values between the spreadsheets ba
   - All rows and their data
 - The registered spreadsheet data must be made available to the UI for selection and comparison configuration.
 
-### Spreadsheet Preview
-- The UI must provide a **spreadsheet preview** for each uploaded spreadsheet, displaying:
-  - A visual representation of the spreadsheet structure
-  - All column headers clearly labeled
-  - Row numbers or identifiers
-  - Sample data rows (or all rows if the spreadsheet is small enough)
-- The preview should make it easy for users to:
-  - Identify which columns are available for comparison
-  - Identify which rows are available for comparison
-  - Understand the structure and content of each spreadsheet before configuring comparisons
-- The preview should be interactive, allowing users to:
-  - Scroll through the data if the spreadsheet is large
-  - Select columns or rows directly from the preview (optional enhancement)
-
----
-
 ### Element Selection
+
 - The system must display all available elements from all registered spreadsheets:
   - All columns from all spreadsheets
   - All rows from all spreadsheets
@@ -72,11 +59,13 @@ so that I can validate, match, or cross-check values between the spreadsheets ba
 ### Comparison Configuration
 
 #### Comparison Type Selection
+
 - After file upload, a **dropdown menu** must allow the user to select:
   - The type of comparison element (column or row)
   - How the comparison should be performed (e.g. equality, contains, lookup-based comparison)
 
 #### Rule Definition
+
 - A **dropdown menu** (or series of menus) must allow the user to define comparison rules, including:
   - Which elements are involved (columns or rows from any registered spreadsheet)
   - The source spreadsheet for each element
@@ -93,19 +82,23 @@ so that I can validate, match, or cross-check values between the spreadsheets ba
 ---
 
 ### Multi-Step Comparison Logic
+
 The system must support workflows such as:
+
 1. Read a value from Column X in Spreadsheet A
 2. Compare it against Column Y in Spreadsheet B
 3. Return to Spreadsheet A and read Column Z
 4. Use the value from Column Z to validate against Column W in Spreadsheet B
 
 The system must also support row-based workflows:
+
 1. Read a value from Row R in Spreadsheet A
 2. Compare it against Row S in Spreadsheet B
 3. Return to Spreadsheet A and read Row T
 4. Use the value from Row T to validate against Row U in Spreadsheet B
 
 Mixed workflows are also supported:
+
 1. Read a value from Column X in Spreadsheet A
 2. Use it to find a matching row in Spreadsheet B
 3. Extract data from that row in Spreadsheet B
@@ -119,13 +112,11 @@ The order of these steps must be **explicitly defined by the user**.
 
 - Dropdown menus must dynamically populate based on all registered spreadsheets.
 - The UI must clearly indicate:
+
   - Which spreadsheets are registered
   - Available columns and rows for each spreadsheet
-- **Spreadsheet preview** must be prominently displayed for each uploaded spreadsheet to help users:
-  - Visually identify available columns and rows
-  - Understand the data structure before making selections
-  - Make informed decisions when configuring comparisons
 - Users must be able to:
+
   - Add multiple comparison rules
   - Select comparison elements (columns or rows) from any registered spreadsheet
   - Define row comparisons between spreadsheets
@@ -158,9 +149,9 @@ The order of these steps must be **explicitly defined by the user**.
 ## Summary
 
 This system enables flexible, user-defined spreadsheet comparisons by:
+
 - Supporting multiple spreadsheet uploads (not limited to two)
 - Registering all uploaded spreadsheets with complete structure (columns and rows)
-- Providing spreadsheet previews to help users understand the data structure
 - Allowing element-level selection (columns and rows)
 - Supporting row comparisons between spreadsheets
 - Supporting column comparisons between spreadsheets

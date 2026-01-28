@@ -80,10 +80,14 @@ export class SpreadsheetParser {
    */
   private extractColumns(headers: any[]): ColumnDefinition[] {
     return headers.map((header, index) => {
-      // Convert header to string, handle empty headers
-      const headerStr = header !== null && header !== undefined 
-        ? String(header).trim() 
-        : `Column ${index + 1}`;
+      // Convert header to string, handle empty headers and empty strings
+      let headerStr: string;
+      if (header === null || header === undefined) {
+        headerStr = `Column ${index + 1}`;
+      } else {
+        const trimmed = String(header).trim();
+        headerStr = trimmed === '' ? `Column ${index + 1}` : trimmed;
+      }
       
       return {
         index,
@@ -103,9 +107,14 @@ export class SpreadsheetParser {
         const data: Record<string, any> = {};
         
         headers.forEach((header, colIndex) => {
-          const headerKey = header !== null && header !== undefined 
-            ? String(header).trim() 
-            : `Column ${colIndex + 1}`;
+          // Convert header to string, handle empty headers and empty strings
+          let headerKey: string;
+          if (header === null || header === undefined) {
+            headerKey = `Column ${colIndex + 1}`;
+          } else {
+            const trimmed = String(header).trim();
+            headerKey = trimmed === '' ? `Column ${colIndex + 1}` : trimmed;
+          }
           
           data[headerKey] = row[colIndex] !== undefined ? row[colIndex] : null;
         });
