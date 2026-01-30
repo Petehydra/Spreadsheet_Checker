@@ -24,8 +24,10 @@ export function MismatchesTable({ mismatches }: MismatchesTableProps) {
           <TableRow>
             <TableHead>Source Value</TableHead>
             <TableHead>Source Location</TableHead>
+            <TableHead>Source Spreadsheet</TableHead>
             <TableHead>Target Value</TableHead>
             <TableHead>Target Location</TableHead>
+            <TableHead>Target Spreadsheet</TableHead>
             <TableHead>Reason</TableHead>
           </TableRow>
         </TableHeader>
@@ -34,8 +36,10 @@ export function MismatchesTable({ mismatches }: MismatchesTableProps) {
             <TableRow key={index}>
               <TableCell className="font-medium">{String(mismatch.sourceValue)}</TableCell>
               <TableCell className="text-secondary-text">{mismatch.sourceLocation}</TableCell>
+              <TableCell className="text-secondary-text">{mismatch.sourceSpreadsheet ?? '—'}</TableCell>
               <TableCell className="font-medium">{String(mismatch.targetValue)}</TableCell>
               <TableCell className="text-secondary-text">{mismatch.targetLocation}</TableCell>
+              <TableCell className="text-secondary-text">{mismatch.targetSpreadsheet ?? '—'}</TableCell>
               <TableCell className="text-destructive text-sm">{mismatch.reason}</TableCell>
             </TableRow>
           ))}

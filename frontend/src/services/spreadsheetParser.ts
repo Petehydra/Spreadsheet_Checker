@@ -25,9 +25,11 @@ export class SpreadsheetParser {
       const sheets: SpreadsheetSheet[] = workbook.SheetNames.map(sheetName => {
         const worksheet = workbook.Sheets[sheetName];
         
-        // Get the actual range of the worksheet to determine max columns
+        // Get the actual range of the worksheet to determine max columns and rows
         const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-        const maxCol = range.e.c + 1; // +1 because range is 0-indexed
+        // Physical column/row extent so we don't miss columns or rows outside !ref
+        const maxCol = this.getPhysicalColumnCount(worksheet, range);
+        const maxRowFromRange = this.getPhysicalRowCount(worksheet, range);
         
         // Convert to JSON with header: 1, but ensure we get all columns
         // Use blankRows: false and raw: false to preserve all cells
@@ -47,7 +49,7 @@ export class SpreadsheetParser {
           return padded;
         });
         
-        return this.parseSheet(sheetName, paddedData);
+        return this.parseSheet(sheetName, paddedData, maxRowFromRange);
       });
       
       return {
@@ -61,34 +63,105 @@ export class SpreadsheetParser {
       throw new Error(`Failed to parse file ${file.name}: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
+
+  /**
+   * Compute physical column count so we don't miss columns outside !ref.
+   * Uses the maximum of: (1) worksheet used range (!ref), (2) merge ranges (!merges), (3) cell keys.
+   */
+  private getPhysicalColumnCount(
+    worksheet: XLSX.WorkSheet,
+    range: { s: { r: number; c: number }; e: { r: number; c: number } }
+  ): number {
+    let maxCol = range.e.c + 1;
+    const merges = worksheet['!merges'] as Array<{ s: { c: number }; e: { c: number } }> | undefined;
+    if (merges && Array.isArray(merges)) {
+      for (const m of merges) {
+        maxCol = Math.max(maxCol, m.e.c + 1);
+      }
+    }
+    const cellRefPattern = /^[A-Z]+[0-9]+$/i;
+    for (const key of Object.keys(worksheet)) {
+      if (key.startsWith('!')) continue;
+      if (!cellRefPattern.test(key)) continue;
+      try {
+        const decoded = XLSX.utils.decode_range(key);
+        maxCol = Math.max(maxCol, decoded.e.c + 1);
+      } catch {
+        // ignore invalid keys
+      }
+    }
+    return maxCol;
+  }
+
+  /**
+   * Compute physical row count so merged/empty rows are included.
+   * Uses the maximum of: (1) worksheet used range (!ref), (2) merge ranges (!merges), (3) cell keys.
+   */
+  private getPhysicalRowCount(
+    worksheet: XLSX.WorkSheet,
+    range: { s: { r: number; c: number }; e: { r: number; c: number } }
+  ): number {
+    let maxRow = range.e.r + 1;
+
+    // Merged ranges can extend beyond !ref; include their end row
+    const merges = worksheet['!merges'] as Array<{ s: { r: number }; e: { r: number } }> | undefined;
+    if (merges && Array.isArray(merges)) {
+      for (const m of merges) {
+        maxRow = Math.max(maxRow, m.e.r + 1);
+      }
+    }
+
+    // Cell keys (e.g. A1, B14) may extend beyond !ref; include the max row from any key
+    const cellRefPattern = /^[A-Z]+[0-9]+$/i;
+    for (const key of Object.keys(worksheet)) {
+      if (key.startsWith('!')) continue;
+      if (!cellRefPattern.test(key)) continue;
+      try {
+        const decoded = XLSX.utils.decode_range(key);
+        maxRow = Math.max(maxRow, decoded.e.r + 1);
+      } catch {
+        // ignore invalid keys
+      }
+    }
+
+    return maxRow;
+  }
   
   /**
-   * Parse a single sheet's data into structured format
+   * Parse a single sheet's data into structured format.
+   * @param maxRowFromRange - Optional physical row count from worksheet range (includes empty/merged rows).
+   *        When set, used for metadata.rowCount so the UI shows the correct row count even when
+   *        sheet_to_json drops completely empty rows.
    */
-  private parseSheet(name: string, rawData: any[][]): SpreadsheetSheet {
+  private parseSheet(name: string, rawData: any[][], maxRowFromRange?: number): SpreadsheetSheet {
     if (!rawData || rawData.length === 0) {
       return {
         name,
         columns: [],
         rows: [],
         metadata: {
-          rowCount: 0,
+          rowCount: maxRowFromRange ?? 0,
           columnCount: 0
         }
       };
     }
 
-    // Extract column headers from first row (already padded to max column count)
+    // Headers from first row (for row data keys)
     const headers = rawData[0] || [];
-    const columns = this.extractColumns(headers);
+    // Columns: only include a column if any cell in that column has content (any form of value)
+    const columns = this.extractColumnsWithContent(rawData, headers);
     
-    // Parse data rows (skip header row)
+    // Parse data rows (skip header row) - existing behaviour unchanged
     const rows = this.extractRows(rawData.slice(1), headers);
     
-    // Use actual physical row count from rawData INCLUDING the header row
-    // This ensures row numbers match the Excel spreadsheet exactly
-    // Row 1 = Row 1 in Excel, Row 3 = Row 3 in Excel, etc.
-    const actualRowCount = rawData.length;
+    // Row count: use the larger of (1) parsed data length and (2) worksheet range row count.
+    // This ensures that when the sheet has empty/merged rows (e.g. row 2 empty), the UI
+    // still shows the correct physical row count (e.g. 14) even if sheet_to_json returns
+    // fewer rows (e.g. 13) because it skips completely blank rows.
+    const rowCountFromData = rawData.length;
+    const actualRowCount = maxRowFromRange != null && maxRowFromRange > rowCountFromData
+      ? maxRowFromRange
+      : rowCountFromData;
     
     return {
       name,
@@ -102,25 +175,39 @@ export class SpreadsheetParser {
   }
   
   /**
-   * Extract column definitions with type detection
+   * Return true if a cell holds any form of content (value/syntax).
    */
-  private extractColumns(headers: any[]): ColumnDefinition[] {
-    return headers.map((header, index) => {
-      // Convert header to string, handle empty headers and empty strings
+  private cellHasContent(value: any): boolean {
+    if (value === null || value === undefined) return false;
+    if (typeof value === 'string') return value.trim() !== '';
+    return true;
+  }
+
+  /**
+   * Extract column definitions only for columns that have at least one cell with content.
+   * Scans every cell in each column; if any row has content there, the column is included.
+   */
+  private extractColumnsWithContent(rawData: any[][], headers: any[]): ColumnDefinition[] {
+    const maxColIndex = Math.max(0, ...rawData.map(row => ((row && row.length) ? row.length : 0) - 1));
+    const columns: ColumnDefinition[] = [];
+    for (let colIndex = 0; colIndex <= maxColIndex; colIndex++) {
+      const hasContent = rawData.some(row => this.cellHasContent((row || [])[colIndex]));
+      if (!hasContent) continue;
+      const header = headers[colIndex];
       let headerStr: string;
       if (header === null || header === undefined) {
-        headerStr = `Column ${index + 1}`;
+        headerStr = `Column ${colIndex + 1}`;
       } else {
         const trimmed = String(header).trim();
-        headerStr = trimmed === '' ? `Column ${index + 1}` : trimmed;
+        headerStr = trimmed === '' ? `Column ${colIndex + 1}` : trimmed;
       }
-      
-      return {
-        index,
+      columns.push({
+        index: colIndex,
         header: headerStr,
-        dataType: 'mixed' // Type detection can be enhanced later
-      };
-    });
+        dataType: 'mixed'
+      });
+    }
+    return columns;
   }
   
   /**

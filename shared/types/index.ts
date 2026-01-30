@@ -99,7 +99,9 @@ export interface ComparisonSource {
   spreadsheetId: string;
   sheetName: string;
   elementType: ComparisonElementType;
-  elementIdentifier: string | number; // Column header or row index
+  elementIdentifier: string | number; // Column index or row index
+  /** When elementType is 'column': true = column has a header row (skip first value when comparing) */
+  hasHeader?: boolean | null;
 }
 
 export interface ComparisonTarget {
@@ -107,6 +109,8 @@ export interface ComparisonTarget {
   sheetName: string;
   elementType: ComparisonElementType;
   elementIdentifier: string | number;
+  /** When elementType is 'column': true = column has a header row (skip first value when comparing) */
+  hasHeader?: boolean | null;
 }
 
 // Results structure
@@ -134,6 +138,10 @@ export interface ComparisonMatch {
   targetValue: any;
   sourceLocation: string;
   targetLocation: string;
+  /** Spreadsheet file name for the source (e.g. "Reference.xlsx") */
+  sourceSpreadsheet?: string;
+  /** Spreadsheet file name for the target */
+  targetSpreadsheet?: string;
 }
 
 export interface ComparisonMismatch {
@@ -142,4 +150,8 @@ export interface ComparisonMismatch {
   sourceLocation: string;
   targetLocation: string;
   reason: string;
+  /** Spreadsheet file name for the source */
+  sourceSpreadsheet?: string;
+  /** Spreadsheet file name for the target */
+  targetSpreadsheet?: string;
 }

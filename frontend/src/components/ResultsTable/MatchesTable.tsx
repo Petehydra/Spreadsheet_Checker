@@ -24,8 +24,10 @@ export function MatchesTable({ matches }: MatchesTableProps) {
           <TableRow>
             <TableHead>Source Value</TableHead>
             <TableHead>Source Location</TableHead>
+            <TableHead>Source Spreadsheet</TableHead>
             <TableHead>Target Value</TableHead>
             <TableHead>Target Location</TableHead>
+            <TableHead>Target Spreadsheet</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -33,8 +35,10 @@ export function MatchesTable({ matches }: MatchesTableProps) {
             <TableRow key={index}>
               <TableCell className="font-medium">{String(match.sourceValue)}</TableCell>
               <TableCell className="text-secondary-text">{match.sourceLocation}</TableCell>
+              <TableCell className="text-secondary-text">{match.sourceSpreadsheet ?? '—'}</TableCell>
               <TableCell className="font-medium">{String(match.targetValue)}</TableCell>
               <TableCell className="text-secondary-text">{match.targetLocation}</TableCell>
+              <TableCell className="text-secondary-text">{match.targetSpreadsheet ?? '—'}</TableCell>
             </TableRow>
           ))}
         </TableBody>

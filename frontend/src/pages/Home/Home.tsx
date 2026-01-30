@@ -3,6 +3,7 @@ import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import UploadedFilesList from "@/components/UploadedFilesList";
 import ComparisonBuilder from "@/components/ComparisonBuilder";
+import { ComparisonResultsView } from "@/components/ComparisonResultsView";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useSpreadsheet } from "@/contexts/SpreadsheetContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -10,28 +11,36 @@ import { AlertCircle } from "lucide-react";
 
 const Home = () => {
   const { addFiles, isUploading } = useFileUpload();
-  const { spreadsheets, removeSpreadsheet } = useSpreadsheet();
+  const { spreadsheets, removeSpreadsheet, results, comparisonRules } = useSpreadsheet();
   const filesListRef = useRef<HTMLElement>(null);
+  const comparisonSectionRef = useRef<HTMLDivElement>(null);
+  const resultsSectionRef = useRef<HTMLDivElement>(null);
   const hasScrolledRef = useRef(false);
 
   // Auto-scroll to files list when 2+ spreadsheets are uploaded
   useEffect(() => {
     if (spreadsheets.length >= 2 && filesListRef.current && !hasScrolledRef.current) {
-      // Small delay to ensure DOM is updated
       setTimeout(() => {
         filesListRef.current?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
+          behavior: "smooth",
+          block: "start",
         });
         hasScrolledRef.current = true;
       }, 300);
     }
-    
-    // Reset scroll flag if spreadsheets drop below 2
     if (spreadsheets.length < 2) {
       hasScrolledRef.current = false;
     }
   }, [spreadsheets.length]);
+
+  // Scroll to results section when comparison completes (results appear on same page)
+  useEffect(() => {
+    if (results && resultsSectionRef.current) {
+      setTimeout(() => {
+        resultsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 150);
+    }
+  }, [results]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -65,7 +74,18 @@ const Home = () => {
           )}
           
           {spreadsheets.length >= 2 && (
-            <ComparisonBuilder />
+            <div ref={comparisonSectionRef}>
+              <ComparisonBuilder />
+            </div>
+          )}
+
+          {results && (
+            <div ref={resultsSectionRef}>
+              <ComparisonResultsView
+                results={results}
+                comparisonRules={comparisonRules}
+              />
+            </div>
           )}
         </>
       )}

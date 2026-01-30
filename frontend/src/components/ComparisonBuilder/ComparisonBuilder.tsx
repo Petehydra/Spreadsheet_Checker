@@ -1,6 +1,9 @@
-import { useState, useRef, useMemo, useEffect } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback } from "react";
 import { useSpreadsheet } from "@/contexts/SpreadsheetContext";
+import { useComparisonEngine } from "@/hooks/useComparisonEngine";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -16,8 +19,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Trash2, Info, Loader2 } from "lucide-react";
+import { Trash2, Info, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import type { ComparisonRule } from "../../../../shared/types";
 
 interface ComparisonRow {
   id: string;
@@ -34,6 +38,8 @@ const ComparisonBuilder = () => {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [loadingColumns, setLoadingColumns] = useState<Record<string, boolean>>({});
   const [loadingRows, setLoadingRows] = useState<Record<string, boolean>>({});
+  const [columnSearchQuery, setColumnSearchQuery] = useState("");
+  const [rowSearchQuery, setRowSearchQuery] = useState("");
   const [sourceRow, setSourceRow] = useState<ComparisonRow>({
     id: "source",
     spreadsheetId: "",
@@ -88,6 +94,142 @@ const ComparisonBuilder = () => {
     );
   }, [spreadsheets]);
 
+  const { executeComparisonWithRules, isExecuting } = useComparisonEngine();
+  const { toast } = useToast();
+
+  /** Build comparison rules from Single mode form (source vs each target). */
+  const buildRulesFromSingleMode = useCallback((): ComparisonRule[] | null => {
+    const isColumnMode = sourceRow.columnIndex !== null;
+    const isRowMode = sourceRow.rowIndex !== null;
+
+    if (!sourceRow.spreadsheetId || !sourceRow.sheetName) {
+      toast({
+        title: 'Source not configured',
+        description: 'Please select a spreadsheet and sheet for the first row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+    if (!isColumnMode && !isRowMode) {
+      toast({
+        title: 'No comparison type',
+        description: 'Please select either a column or a row in the source row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+    if (isColumnMode && isRowMode) {
+      toast({
+        title: 'Invalid selection',
+        description: 'Please select either a column or a row, not both, in the source row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    // When comparing columns, user must choose Yes or No for the header dropdown (source and each target)
+    if (isColumnMode) {
+      if (sourceRow.hasHeader === null) {
+        toast({
+          title: 'Header not selected',
+          description: 'Please select Yes or No in the Header? dropdown for the source row.',
+          variant: 'destructive'
+        });
+        return null;
+      }
+      for (let i = 0; i < targetRows.length; i++) {
+        const target = targetRows[i];
+        if (target.spreadsheetId && target.sheetName && target.columnIndex !== null && target.hasHeader === null) {
+          toast({
+            title: 'Header not selected',
+            description: `Please select Yes or No in the Header? dropdown for comparison row ${i + 2}.`,
+            variant: 'destructive'
+          });
+          return null;
+        }
+      }
+    }
+
+    const elementType = isColumnMode ? 'column' : 'row';
+    const sourceIdentifier = isColumnMode ? sourceRow.columnIndex! : sourceRow.rowIndex!;
+
+    const rules: ComparisonRule[] = [];
+    for (let i = 0; i < targetRows.length; i++) {
+      const target = targetRows[i];
+      if (!target.spreadsheetId || !target.sheetName) {
+        toast({
+          title: 'Target not configured',
+          description: `Please select a spreadsheet and sheet for comparison row ${i + 2}.`,
+          variant: 'destructive'
+        });
+        return null;
+      }
+      const targetIsColumn = target.columnIndex !== null;
+      const targetIsRow = target.rowIndex !== null;
+      if (targetIsColumn !== isColumnMode || targetIsRow !== isRowMode) {
+        toast({
+          title: 'Mismatched comparison type',
+          description: `Target row ${i + 2} must select the same type (column or row) as the source.`,
+          variant: 'destructive'
+        });
+        return null;
+      }
+      const targetIdentifier = isColumnMode ? target.columnIndex! : target.rowIndex!;
+
+      rules.push({
+        id: `single-rule-${sourceRow.id}-${target.id}-${i}`,
+        stepNumber: i + 1,
+        elementType,
+        method: 'equals',
+        source: {
+          spreadsheetId: sourceRow.spreadsheetId,
+          sheetName: sourceRow.sheetName,
+          elementType,
+          elementIdentifier: sourceIdentifier,
+          hasHeader: isColumnMode ? sourceRow.hasHeader ?? undefined : undefined
+        },
+        target: {
+          spreadsheetId: target.spreadsheetId,
+          sheetName: target.sheetName,
+          elementType,
+          elementIdentifier: targetIdentifier,
+          hasHeader: isColumnMode ? target.hasHeader ?? undefined : undefined
+        }
+      });
+    }
+
+    if (rules.length === 0) {
+      toast({
+        title: 'No targets',
+        description: 'Please configure at least one target row to compare against.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    return rules;
+  }, [sourceRow, targetRows, toast]);
+
+  const handleRunComparison = useCallback(() => {
+    const rules = buildRulesFromSingleMode();
+    if (rules) {
+      executeComparisonWithRules(rules);
+    }
+  }, [buildRulesFromSingleMode, executeComparisonWithRules]);
+
+  // When comparing columns, Run is disabled until Header? is set to Yes or No for source and each configured target
+  const isColumnMode = sourceRow.columnIndex !== null;
+  const headerMissingForColumnMode =
+    isColumnMode &&
+    (sourceRow.hasHeader === null ||
+      targetRows.some(
+        (t) =>
+          t.spreadsheetId &&
+          t.sheetName &&
+          t.columnIndex !== null &&
+          t.hasHeader === null
+      ));
+
   // Convert column index to letter
   const indexToColumnLetter = (index: number): string => {
     let result = '';
@@ -105,22 +247,17 @@ const ComparisonBuilder = () => {
     return spreadsheet?.sheets || [];
   };
 
-  // Get columns for selected sheet
+  // Get columns for selected sheet (parser already includes only columns with at least one cell with content)
   const getColumns = (spreadsheetId: string, sheetName: string): Array<{ index: number; letter: string }> => {
     const spreadsheet = spreadsheets.find(s => s.id === spreadsheetId);
     const sheet = spreadsheet?.sheets.find(s => s.name === sheetName);
     
     if (!sheet) return [];
     
-    // Return all columns that exist in the spreadsheet structure
-    // The parser creates columns for all columns up to columnCount, so we return all of them
-    // This includes columns with content in any row (header row or data rows)
-    const columns: Array<{ index: number; letter: string }> = [];
-    for (let i = 0; i < sheet.metadata.columnCount; i++) {
-      columns.push({ index: i, letter: indexToColumnLetter(i) });
-    }
-    
-    return columns;
+    return sheet.columns.map(c => ({
+      index: c.index,
+      letter: indexToColumnLetter(c.index)
+    }));
   };
 
   // Get rows for selected sheet
@@ -167,35 +304,9 @@ const ComparisonBuilder = () => {
     setLoadingColumns(prev => ({ ...prev, [columnsKey]: true }));
     setLoadingRows(prev => ({ ...prev, [rowsKey]: true }));
     
-    // Compute columns asynchronously in chunks to allow UI updates
+    // Columns are already filtered by content in the parser; just yield so UI can update
     const computeColumnsAsync = async () => {
-      const columns: Array<{ index: number; letter: string }> = [];
-      const chunkSize = 50; // Process 50 columns at a time
-      
-      for (let i = 0; i < sheet.metadata.columnCount; i += chunkSize) {
-        // Yield to browser to allow UI updates
-        await new Promise(resolve => setTimeout(resolve, 0));
-        
-        const end = Math.min(i + chunkSize, sheet.metadata.columnCount);
-        for (let j = i; j < end; j++) {
-          const columnDef = sheet.columns.find(c => c.index === j);
-          const headerKey = columnDef?.header || `Column ${j + 1}`;
-          
-          let hasData = false;
-          for (const row of sheet.rows) {
-            const value = row.data[headerKey];
-            if (value !== null && value !== undefined && value !== '' && String(value).trim() !== '') {
-              hasData = true;
-              break;
-            }
-          }
-          
-          if (hasData) {
-            columns.push({ index: j, letter: indexToColumnLetter(j) });
-          }
-        }
-      }
-      
+      await new Promise(resolve => setTimeout(resolve, 0));
       setLoadingColumns(prev => ({ ...prev, [columnsKey]: false }));
     };
     
@@ -251,8 +362,8 @@ const ComparisonBuilder = () => {
         updated.columnIndex = null;
         updated.hasHeader = null;
       }
-      // If spreadsheet is cleared, clear all dependent fields
-      if (field === 'spreadsheetId' && !value) {
+      // When spreadsheet changes (to a new file or cleared), reset all dependent dropdowns to default
+      if (field === 'spreadsheetId') {
         updated.sheetName = "";
         updated.columnIndex = null;
         updated.hasHeader = null;
@@ -287,8 +398,8 @@ const ComparisonBuilder = () => {
         updated[index].columnIndex = null;
         updated[index].hasHeader = null;
       }
-      // If spreadsheet is cleared, clear all dependent fields
-      if (field === 'spreadsheetId' && !value) {
+      // When spreadsheet changes (to a new file or cleared), reset all dependent dropdowns to default
+      if (field === 'spreadsheetId') {
         updated[index].sheetName = "";
         updated[index].columnIndex = null;
         updated[index].hasHeader = null;
@@ -367,6 +478,7 @@ const ComparisonBuilder = () => {
           key={`${row.id}-column-${row.columnIndex}`}
           value={row.columnIndex !== null ? String(row.columnIndex) : undefined}
           onValueChange={(value) => updateFn('columnIndex', value === "__clear__" ? null : (value ? parseInt(value) : null))}
+          onOpenChange={(open) => !open && setColumnSearchQuery("")}
           disabled={!row.sheetName || row.rowIndex !== null}
         >
           <SelectTrigger className={cn("h-10 bg-white text-left", row.rowIndex !== null && "opacity-50")}>
@@ -376,20 +488,30 @@ const ComparisonBuilder = () => {
                 <span className="text-muted-foreground">Loading...</span>
               </div>
             ) : (
-              <SelectValue placeholder="Columns" />
+              <SelectValue placeholder="Column" />
             )}
           </SelectTrigger>
           <SelectContent>
+            <div className="sticky top-0 z-10 p-2 bg-white border-b" onClick={(e) => e.stopPropagation()}>
+              <Input
+                placeholder="Search column (e.g. A, M)"
+                value={columnSearchQuery}
+                onChange={(e) => setColumnSearchQuery(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
             {row.columnIndex !== null && (
               <SelectItem value="__clear__" className="sticky top-0 z-10 -mx-1 w-[calc(100%+0.5rem)] min-w-full bg-white border-b group hover:bg-red-600 focus:bg-red-600 data-[highlighted]:bg-red-600">
                 <span className="text-red-600 italic group-hover:text-white group-focus:text-white group-data-[highlighted]:text-white">Clear selection</span>
               </SelectItem>
             )}
-            {getColumns(row.spreadsheetId, row.sheetName).map((col) => (
-              <SelectItem key={col.index} value={String(col.index)}>
-                {col.letter}
-              </SelectItem>
-            ))}
+            {getColumns(row.spreadsheetId, row.sheetName)
+              .filter((col) => col.letter.toLowerCase().includes(columnSearchQuery.trim().toLowerCase()))
+              .map((col) => (
+                <SelectItem key={col.index} value={String(col.index)}>
+                  {col.letter}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       </div>
@@ -446,6 +568,7 @@ const ComparisonBuilder = () => {
           key={`${row.id}-row-${row.rowIndex}`}
           value={row.rowIndex !== null ? String(row.rowIndex) : undefined}
           onValueChange={(value) => updateFn('rowIndex', value === "__clear__" ? null : (value ? parseInt(value) : null))}
+          onOpenChange={(open) => !open && setRowSearchQuery("")}
           disabled={!row.sheetName || row.columnIndex !== null}
         >
           <SelectTrigger className={cn("h-10 bg-white text-left", row.columnIndex !== null && "opacity-50")}>
@@ -459,16 +582,26 @@ const ComparisonBuilder = () => {
             )}
           </SelectTrigger>
           <SelectContent>
+            <div className="sticky top-0 z-10 p-2 bg-white border-b" onClick={(e) => e.stopPropagation()}>
+              <Input
+                placeholder="Search row (e.g. 10)"
+                value={rowSearchQuery}
+                onChange={(e) => setRowSearchQuery(e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
             {row.rowIndex !== null && (
               <SelectItem value="__clear__" className="sticky top-0 z-10 -mx-1 w-[calc(100%+0.5rem)] min-w-full bg-white border-b group hover:bg-red-600 focus:bg-red-600 data-[highlighted]:bg-red-600">
                 <span className="text-red-600 italic group-hover:text-white group-focus:text-white group-data-[highlighted]:text-white">Clear selection</span>
               </SelectItem>
             )}
-            {getRows(row.spreadsheetId, row.sheetName).map((r) => (
-              <SelectItem key={r.index} value={String(r.index)}>
-                Row {r.index + 1}
-              </SelectItem>
-            ))}
+            {getRows(row.spreadsheetId, row.sheetName)
+              .filter((r) => String(r.index + 1).includes(rowSearchQuery.trim()))
+              .map((r) => (
+                <SelectItem key={r.index} value={String(r.index)}>
+                  Row {r.index + 1}
+                </SelectItem>
+              ))}
           </SelectContent>
         </Select>
       </div>
@@ -478,6 +611,27 @@ const ComparisonBuilder = () => {
   return (
     <section className="max-w-7xl mx-auto px-8 py-8">
       <div className="bg-card rounded-2xl shadow-sm border border-border p-6">
+        <div className="flex items-center gap-2 mb-6">
+          <h2 className="text-lg font-semibold text-foreground">Comparison</h2>
+          <TooltipProvider delayDuration={0}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label="Comparison info"
+                >
+                  <AlertCircle className="h-4 w-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-sm">
+                <p className="text-sm text-left">
+                  The comparison is not chronological. The system simply checks whether a value from a specific column or row in Spreadsheet 1 exists anywhere in the selected column or row in Spreadsheet 2 and so on. If a match is found, the system reports the column and row where the match is found.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <div className="flex items-center gap-3 mb-6">
             <TabsList className="grid w-full max-w-md grid-cols-2">
@@ -587,13 +741,11 @@ const ComparisonBuilder = () => {
             {/* Run Comparison Button */}
             <div className="pt-6">
               <Button
-                onClick={() => {
-                  // TODO: Implement comparison logic
-                  console.log('Run comparison clicked');
-                }}
-                className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md hover:scale-[1.01] shadow-sm font-semibold transition-all duration-200"
+                onClick={handleRunComparison}
+                disabled={isExecuting || headerMissingForColumnMode}
+                className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md hover:scale-[1.01] shadow-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Run Comparison
+                {isExecuting ? 'Running...' : 'Run Comparison'}
               </Button>
             </div>
             

@@ -17,6 +17,24 @@ import type {
  */
 export class ComparisonEngine {
   constructor(private spreadsheets: ParsedSpreadsheet[]) {}
+
+  /** Get spreadsheet file name by id for display in results tables. */
+  private getSpreadsheetFileName(spreadsheetId: string): string {
+    return this.spreadsheets.find(s => s.id === spreadsheetId)?.fileName ?? 'Unknown';
+  }
+
+  /**
+   * Convert column index (0-based) to letter(s), e.g. 0 -> A, 26 -> AA
+   */
+  private columnIndexToLetter(index: number): string {
+    let letter = '';
+    let n = index;
+    while (n >= 0) {
+      letter = String.fromCharCode((n % 26) + 65) + letter;
+      n = Math.floor(n / 26) - 1;
+    }
+    return letter;
+  }
   
   /**
    * Execute all comparison rules in order
@@ -97,16 +115,19 @@ export class ComparisonEngine {
     }
     
     if (source.elementType === 'column') {
-      return this.getColumnData(sheet, source.elementIdentifier);
+      return this.getColumnData(sheet, source.elementIdentifier, source.hasHeader);
     } else {
       return this.getRowData(sheet, source.elementIdentifier);
     }
   }
   
   /**
-   * Extract column data from a sheet
+   * Extract column data from a sheet.
+   * When hasHeader is true, the header row (row 1) is not included in sheet.rows by the parser,
+   * so we do not compare it. We still report Excel row numbers: row 1 = header, row 2 = first data row.
+   * So when hasHeader is true, first data row is displayed as Row 2 (row.index + 2); when false, Row 1 (row.index + 1).
    */
-  private getColumnData(sheet: any, identifier: string | number): any[] {
+  private getColumnData(sheet: any, identifier: string | number, hasHeader?: boolean | null): any[] {
     const columnIndex = typeof identifier === 'number' 
       ? identifier 
       : sheet.columns.findIndex((c: any) => c.header === identifier);
@@ -116,11 +137,16 @@ export class ComparisonEngine {
     }
     
     const columnHeader = sheet.columns[columnIndex].header;
+    const columnLetter = this.columnIndexToLetter(columnIndex);
+    // When hasHeader is true, row 1 is the header; first data row is Excel row 2, so display row.index + 2
+    const rowOffset = hasHeader === true ? 2 : 1;
     
-    return sheet.rows.map((row: any) => ({
+    const data = sheet.rows.map((row: any) => ({
       value: row.data[columnHeader],
-      location: `Row ${row.index + 1}`
+      location: `Column ${columnLetter}, Row ${row.index + rowOffset}`
     }));
+    
+    return data;
   }
   
   /**
@@ -143,47 +169,40 @@ export class ComparisonEngine {
   }
   
   /**
-   * Equals comparison: Check if source values equal target values
+   * Equals comparison: Check if source values exist in target (value-based, not row-by-row).
+   * For columns: each value in the source column is checked against all values in the target column;
+   * if found anywhere, it's a match and we report the exact column and row where it was found in the target.
    */
   private compareEquals(sourceData: any[], targetData: any[], rule: ComparisonRule): RuleResult {
     const matches: ComparisonMatch[] = [];
     const mismatches: ComparisonMismatch[] = [];
+    const sourceSpreadsheet = this.getSpreadsheetFileName(rule.source.spreadsheetId);
+    const targetSpreadsheet = this.getSpreadsheetFileName(rule.target.spreadsheetId);
     
-    // For column comparisons, compare element by element
     if (rule.elementType === 'column') {
-      const maxLength = Math.max(sourceData.length, targetData.length);
-      
-      for (let i = 0; i < maxLength; i++) {
-        const sourceItem = sourceData[i];
-        const targetItem = targetData[i];
-        
-        if (!sourceItem || !targetItem) {
-          if (sourceItem || targetItem) {
-            mismatches.push({
-              sourceValue: sourceItem?.value ?? 'N/A',
-              targetValue: targetItem?.value ?? 'N/A',
-              sourceLocation: sourceItem?.location ?? `Row ${i + 1}`,
-              targetLocation: targetItem?.location ?? `Row ${i + 1}`,
-              reason: 'One side is missing data'
-            });
-          }
-          continue;
-        }
-        
-        if (this.valuesEqual(sourceItem.value, targetItem.value)) {
+      // Value-based column comparison: for each source value, check if it exists anywhere in the target column
+      for (const sourceItem of sourceData) {
+        const found = targetData.find((t: { value: any; location: string }) =>
+          this.valuesEqual(sourceItem.value, t.value)
+        );
+        if (found) {
           matches.push({
             sourceValue: sourceItem.value,
-            targetValue: targetItem.value,
+            targetValue: found.value,
             sourceLocation: sourceItem.location,
-            targetLocation: targetItem.location
+            targetLocation: found.location,
+            sourceSpreadsheet,
+            targetSpreadsheet
           });
         } else {
           mismatches.push({
             sourceValue: sourceItem.value,
-            targetValue: targetItem.value,
+            targetValue: 'N/A',
             sourceLocation: sourceItem.location,
-            targetLocation: targetItem.location,
-            reason: 'Values do not match'
+            targetLocation: 'Not found in target column',
+            reason: 'Value not found in target column',
+            sourceSpreadsheet,
+            targetSpreadsheet
           });
         }
       }
@@ -198,7 +217,9 @@ export class ComparisonEngine {
             targetValue: 'N/A',
             sourceLocation: sourceItem.location,
             targetLocation: sourceItem.location,
-            reason: 'Column not found in target row'
+            reason: 'Column not found in target row',
+            sourceSpreadsheet,
+            targetSpreadsheet
           });
           continue;
         }
@@ -208,7 +229,9 @@ export class ComparisonEngine {
             sourceValue: sourceItem.value,
             targetValue: targetItem.value,
             sourceLocation: sourceItem.location,
-            targetLocation: targetItem.location
+            targetLocation: targetItem.location,
+            sourceSpreadsheet,
+            targetSpreadsheet
           });
         } else {
           mismatches.push({
@@ -216,7 +239,9 @@ export class ComparisonEngine {
             targetValue: targetItem.value,
             sourceLocation: sourceItem.location,
             targetLocation: targetItem.location,
-            reason: 'Values do not match'
+            reason: 'Values do not match',
+            sourceSpreadsheet,
+            targetSpreadsheet
           });
         }
       }
@@ -241,7 +266,8 @@ export class ComparisonEngine {
   private compareContains(sourceData: any[], targetData: any[], rule: ComparisonRule): RuleResult {
     const matches: ComparisonMatch[] = [];
     const mismatches: ComparisonMismatch[] = [];
-    
+    const sourceSpreadsheet = this.getSpreadsheetFileName(rule.source.spreadsheetId);
+    const targetSpreadsheet = this.getSpreadsheetFileName(rule.target.spreadsheetId);
     const targetValues = targetData.map(item => item.value);
     
     for (const sourceItem of sourceData) {
@@ -258,7 +284,9 @@ export class ComparisonEngine {
           sourceValue: sourceItem.value,
           targetValue: matchingTarget?.value,
           sourceLocation: sourceItem.location,
-          targetLocation: matchingTarget?.location || 'N/A'
+          targetLocation: matchingTarget?.location || 'N/A',
+          sourceSpreadsheet,
+          targetSpreadsheet
         });
       } else {
         mismatches.push({
@@ -266,7 +294,9 @@ export class ComparisonEngine {
           targetValue: 'N/A',
           sourceLocation: sourceItem.location,
           targetLocation: 'N/A',
-          reason: 'Value not found in target'
+          reason: 'Value not found in target',
+          sourceSpreadsheet,
+          targetSpreadsheet
         });
       }
     }
@@ -290,7 +320,8 @@ export class ComparisonEngine {
   private compareLookup(sourceData: any[], targetData: any[], rule: ComparisonRule, storage: Map<string, any>): RuleResult {
     const matches: ComparisonMatch[] = [];
     const mismatches: ComparisonMismatch[] = [];
-    
+    const sourceSpreadsheet = this.getSpreadsheetFileName(rule.source.spreadsheetId);
+    const targetSpreadsheet = this.getSpreadsheetFileName(rule.target.spreadsheetId);
     // Create a lookup map from target data
     const targetMap = new Map<string, any[]>();
     targetData.forEach(item => {
@@ -311,7 +342,9 @@ export class ComparisonEngine {
             sourceValue: sourceItem.value,
             targetValue: target.value,
             sourceLocation: sourceItem.location,
-            targetLocation: target.location
+            targetLocation: target.location,
+            sourceSpreadsheet,
+            targetSpreadsheet
           });
         });
       } else {
@@ -320,7 +353,9 @@ export class ComparisonEngine {
           targetValue: 'N/A',
           sourceLocation: sourceItem.location,
           targetLocation: 'N/A',
-          reason: 'No matching value found in target'
+          reason: 'No matching value found in target',
+          sourceSpreadsheet,
+          targetSpreadsheet
         });
       }
     }
@@ -344,7 +379,8 @@ export class ComparisonEngine {
   private compareValidate(sourceData: any[], targetData: any[], rule: ComparisonRule): RuleResult {
     const matches: ComparisonMatch[] = [];
     const mismatches: ComparisonMismatch[] = [];
-    
+    const sourceSpreadsheet = this.getSpreadsheetFileName(rule.source.spreadsheetId);
+    const targetSpreadsheet = this.getSpreadsheetFileName(rule.target.spreadsheetId);
     // Validation logic: Check if all source values are non-empty and valid
     for (const sourceItem of sourceData) {
       const isValid = sourceItem.value !== null && 
@@ -356,7 +392,9 @@ export class ComparisonEngine {
           sourceValue: sourceItem.value,
           targetValue: 'Valid',
           sourceLocation: sourceItem.location,
-          targetLocation: 'N/A'
+          targetLocation: 'N/A',
+          sourceSpreadsheet,
+          targetSpreadsheet
         });
       } else {
         mismatches.push({
@@ -364,7 +402,9 @@ export class ComparisonEngine {
           targetValue: 'Invalid',
           sourceLocation: sourceItem.location,
           targetLocation: 'N/A',
-          reason: 'Value is empty or invalid'
+          reason: 'Value is empty or invalid',
+          sourceSpreadsheet,
+          targetSpreadsheet
         });
       }
     }

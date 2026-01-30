@@ -45,7 +45,7 @@ const UploadedFilesList = forwardRef<HTMLElement, UploadedFilesListProps>(({ fil
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
                       <p className="text-sm text-left">
-                        There is no requirement to include all uploaded files in the comparison. For instance, you may upload five files while selecting only two for comparison.
+                        It's not required to include all uploaded files in the comparison. For instance, you may upload five files while selecting only two for comparison.
                       </p>
                     </TooltipContent>
                   </Tooltip>
