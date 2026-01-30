@@ -24,9 +24,30 @@ export class SpreadsheetParser {
       
       const sheets: SpreadsheetSheet[] = workbook.SheetNames.map(sheetName => {
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' }) as any[][];
         
-        return this.parseSheet(sheetName, jsonData);
+        // Get the actual range of the worksheet to determine max columns
+        const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+        const maxCol = range.e.c + 1; // +1 because range is 0-indexed
+        
+        // Convert to JSON with header: 1, but ensure we get all columns
+        // Use blankRows: false and raw: false to preserve all cells
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+          header: 1, 
+          defval: '',
+          blankrows: false,
+          raw: false
+        }) as any[][];
+        
+        // Pad all rows to match the actual column count from the range
+        const paddedData = jsonData.map(row => {
+          const padded = [...(row || [])];
+          while (padded.length < maxCol) {
+            padded.push(undefined);
+          }
+          return padded;
+        });
+        
+        return this.parseSheet(sheetName, paddedData);
       });
       
       return {
@@ -57,7 +78,7 @@ export class SpreadsheetParser {
       };
     }
 
-    // Extract column headers from first row
+    // Extract column headers from first row (already padded to max column count)
     const headers = rawData[0] || [];
     const columns = this.extractColumns(headers);
     
@@ -121,6 +142,7 @@ export class SpreadsheetParser {
             headerKey = trimmed === '' ? `Column ${colIndex + 1}` : trimmed;
           }
           
+          // Row is already padded to match headers length
           data[headerKey] = row[colIndex] !== undefined ? row[colIndex] : null;
         });
         

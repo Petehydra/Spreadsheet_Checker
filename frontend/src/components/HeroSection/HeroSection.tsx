@@ -35,7 +35,7 @@ const HeroSection = ({ onFilesSelected, isUploading = false }: HeroSectionProps)
               Spreadsheet Checker
             </h1>
             <p className="text-lg text-muted-foreground leading-relaxed">
-              Your tool for making your working time more efficient. Insert PDF(s) and a corresponding spreadsheet to validate and cross-check your data.
+              The Spreadsheet Checker tool helps you quickly compare spreadsheets whether it's columns or rows.
             </p>
             
             {/* Upload controls */}
@@ -48,16 +48,19 @@ const HeroSection = ({ onFilesSelected, isUploading = false }: HeroSectionProps)
                 onChange={handleFileChange}
                 className="hidden"
               />
-              <Button 
-                variant="hero" 
-                size="xl" 
-                onClick={handleButtonClick}
-                className="w-full sm:w-auto"
-                disabled={isUploading}
-              >
-                {isUploading ? 'Processing...' : 'Upload files'}
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button 
+                  variant="hero" 
+                  size="xl" 
+                  onClick={handleButtonClick}
+                  className="w-full sm:w-auto"
+                  disabled={isUploading}
+                >
+                  {isUploading ? 'Processing...' : 'Upload files'}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+                <p className="text-sm text-muted-foreground/70">*.csv *.xlsx</p>
+              </div>
               <DragDropZone onFilesDropped={onFilesSelected} />
             </div>
           </div>
