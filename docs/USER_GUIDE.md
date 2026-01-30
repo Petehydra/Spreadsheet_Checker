@@ -57,33 +57,40 @@ Simply navigate to the application URL in your browser. No login or registration
 
 ## Selecting Elements
 
-After uploading at least 2 spreadsheets, click "Select Spreadsheets to Compare →"
+After uploading spreadsheets, you'll see them listed in the "Selected Files" section on the home page. Each file has selection controls integrated directly into its row.
+
+### Selecting a Spreadsheet
+
+1. Check the checkbox next to the file name to select it for comparison
+2. Once selected, the dropdown menus become enabled
 
 ### Selecting Sheets
 
-1. Expand a spreadsheet card by clicking on it
-2. Each sheet shows: [Checkbox] Sheet Name [Rows × Columns badge]
-3. Check the sheets you want to include in comparisons
+1. Click the "Select Sheet" dropdown for the selected spreadsheet
+2. A list of all sheets in that spreadsheet will appear
+3. Select one sheet (only one sheet can be selected at a time)
+4. The selected sheet name will appear in the dropdown button
 
 ### Selecting Columns
 
-1. Expand a sheet to see all its columns
-2. Column names are displayed as checkboxes
-3. Select the specific columns you want to compare
-4. You can select columns from different sheets and spreadsheets
+1. After selecting a sheet, click the "Select Columns" dropdown
+2. You'll see a list of Excel column letters (A, B, C, D, etc.) representing columns that contain data
+3. Only columns with actual content are shown (empty columns are automatically excluded)
+4. Check the columns you want to compare
+5. Use "Deselect all" to clear your column selections
+6. The dropdown shows how many columns you've selected
 
-### Selecting Rows
-
-1. Under each sheet, you'll see row indices (1, 2, 3, ...)
-2. Select specific rows you want to compare
-3. First 20 rows are shown; indicator displays if more exist
+**Note:** Column selection displays Excel column letters (A, B, C) rather than header names, making it easy to identify columns regardless of whether headers exist.
 
 ### Requirements
 
-- Must select elements from at least 2 different spreadsheets or sheets
-- Can mix selections (e.g., columns from one file, rows from another)
+- Must select at least 2 spreadsheets (checkboxes must be checked)
+- Each spreadsheet must have at least one sheet selected
+- Column selection is optional but recommended for precise comparisons
 
-Click "Continue to Comparison Configuration →" when ready.
+### Removing Files
+
+Click the trash icon on the right side of any file row to remove it from the selection.
 
 ## Configuring Comparison Rules
 
@@ -241,7 +248,10 @@ Currently, results are displayed on-screen only. To save results:
 ### Can't Select Elements
 
 - Ensure you've uploaded at least 2 spreadsheets
+- Check the checkbox next to the file name to enable selection dropdowns
+- Select a sheet from the "Select Sheet" dropdown before selecting columns
 - Check that spreadsheets have actual data (not empty)
+- Only columns with data will appear in the column selection dropdown
 - Refresh page and re-upload if needed
 
 ### Comparison Results Look Wrong
@@ -259,10 +269,11 @@ Currently, results are displayed on-screen only. To save results:
 ## Tips & Best Practices
 
 1. **Start Simple** - Test with a single rule before building complex workflows
-2. **Use Descriptive Names** - Column headers should be clear and consistent
-3. **Check Selections** - Verify sheet/column/row selections before configuring rules
+2. **Column Letters** - Columns are identified by Excel letters (A, B, C), making selection easy even without headers
+3. **Check Selections** - Verify sheet/column selections before configuring rules
 4. **Review Rule Order** - Multi-step workflows depend on execution sequence
 5. **Understand Methods** - Choose the right comparison method for your use case
+6. **Empty Columns** - Columns with no data are automatically excluded from selection
 
 ## Support
 
@@ -272,6 +283,13 @@ For questions or issues:
 - Contact the development team
 
 ## Version History
+
+- **v1.1.0** - UI improvements and column detection enhancements
+  - Integrated selection controls directly into file list
+  - Removed header detection requirement for column selection
+  - Column selection now displays Excel column letters (A, B, C)
+  - Improved column detection to find all columns with data
+  - Automatic exclusion of empty columns
 
 - **v1.0.0** - Initial release with full comparison functionality
   - Multiple spreadsheet upload

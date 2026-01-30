@@ -64,12 +64,17 @@ export class SpreadsheetParser {
     // Parse data rows (skip header row)
     const rows = this.extractRows(rawData.slice(1), headers);
     
+    // Use actual physical row count from rawData INCLUDING the header row
+    // This ensures row numbers match the Excel spreadsheet exactly
+    // Row 1 = Row 1 in Excel, Row 3 = Row 3 in Excel, etc.
+    const actualRowCount = rawData.length;
+    
     return {
       name,
       columns,
       rows,
       metadata: {
-        rowCount: rows.length,
+        rowCount: actualRowCount,
         columnCount: columns.length
       }
     };

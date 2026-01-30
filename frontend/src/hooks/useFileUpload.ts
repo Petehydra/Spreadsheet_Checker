@@ -15,7 +15,7 @@ const ACCEPTED_EXTENSIONS = [".xlsx", ".xls", ".csv"];
 
 export const useFileUpload = () => {
   const [isUploading, setIsUploading] = useState(false);
-  const { addSpreadsheet } = useSpreadsheet();
+  const { addSpreadsheet, spreadsheets } = useSpreadsheet();
   const { toast } = useToast();
   const parser = new SpreadsheetParser();
 
@@ -44,12 +44,29 @@ export const useFileUpload = () => {
       return;
     }
 
+    // Check for duplicate file names
+    const existingFileNames = new Set(spreadsheets.map(s => s.fileName));
+    const duplicateFiles = validFiles.filter(f => existingFileNames.has(f.name));
+    const uniqueFiles = validFiles.filter(f => !existingFileNames.has(f.name));
+
+    if (duplicateFiles.length > 0) {
+      toast({
+        title: 'Duplicate files',
+        description: `${duplicateFiles.length} file(s) were skipped because they are already uploaded: ${duplicateFiles.map(f => f.name).join(', ')}`,
+        variant: 'destructive'
+      });
+    }
+
+    if (uniqueFiles.length === 0) {
+      return;
+    }
+
     setIsUploading(true);
     let successCount = 0;
     let failureCount = 0;
     
     try {
-      for (const file of validFiles) {
+      for (const file of uniqueFiles) {
         try {
           const parsed = await parser.parseFile(file);
           addSpreadsheet(parsed);
@@ -70,7 +87,7 @@ export const useFileUpload = () => {
       }
       
       // Summary toast if multiple files
-      if (validFiles.length > 1) {
+      if (uniqueFiles.length > 1) {
         if (successCount > 0 && failureCount === 0) {
           toast({
             title: 'All files uploaded',
@@ -93,7 +110,7 @@ export const useFileUpload = () => {
     } finally {
       setIsUploading(false);
     }
-  }, [validateFile, addSpreadsheet, parser, toast]);
+  }, [validateFile, addSpreadsheet, spreadsheets, parser, toast]);
 
   return {
     addFiles,

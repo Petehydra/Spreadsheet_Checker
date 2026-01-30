@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import Header from "@/components/Header";
 import HeroSection from "@/components/HeroSection";
 import UploadedFilesList from "@/components/UploadedFilesList";
+import ComparisonBuilder from "@/components/ComparisonBuilder";
 import { useFileUpload } from "@/hooks/useFileUpload";
 import { useSpreadsheet } from "@/contexts/SpreadsheetContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -61,6 +62,10 @@ const Home = () => {
                 </AlertDescription>
               </Alert>
             </div>
+          )}
+          
+          {spreadsheets.length >= 2 && (
+            <ComparisonBuilder />
           )}
         </>
       )}
