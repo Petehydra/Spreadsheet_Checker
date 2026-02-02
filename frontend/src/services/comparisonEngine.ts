@@ -123,9 +123,9 @@ export class ComparisonEngine {
   
   /**
    * Extract column data from a sheet.
-   * When hasHeader is true, the header row (row 1) is not included in sheet.rows by the parser,
-   * so we do not compare it. We still report Excel row numbers: row 1 = header, row 2 = first data row.
-   * So when hasHeader is true, first data row is displayed as Row 2 (row.index + 2); when false, Row 1 (row.index + 1).
+   * Row counting is based on detected header rows from the spreadsheet metadata, not user input.
+   * The parser excludes header rows from sheet.rows, so we calculate Excel row numbers based on
+   * the detected headerRowCount from metadata.
    */
   private getColumnData(sheet: any, identifier: string | number, hasHeader?: boolean | null): any[] {
     const columnIndex = typeof identifier === 'number' 
@@ -138,12 +138,21 @@ export class ComparisonEngine {
     
     const columnHeader = sheet.columns[columnIndex].header;
     const columnLetter = this.columnIndexToLetter(columnIndex);
-    // When hasHeader is true, row 1 is the header; first data row is Excel row 2, so display row.index + 2
-    const rowOffset = hasHeader === true ? 2 : 1;
+    
+    // Always use detected header row count from metadata (detected via merged cells)
+    // This is the actual number of header rows detected in the spreadsheet structure, 
+    // regardless of user's hasHeader selection. Detection is based on merged cells.
+    // headerRowCount defaults to 1 (single header row) if not detected
+    const headerRowCount = sheet.metadata?.headerRowCount ?? 1;
+    
+    // Calculate Excel row number: row.index is 0-indexed (first data row = 0)
+    // Excel row = row.index + headerRowCount + 1
+    // Example: if headerRowCount = 1 (single header), first data row (index 0) = Excel row 2
+    // Example: if headerRowCount = 2 (rows 1-2 merged), first data row (index 0) = Excel row 3
+    const rowOffset = headerRowCount + 1;
     
     const data = sheet.rows.map((row: any) => ({
-      value: row.data[columnHeader],
-      location: `Column ${columnLetter}, Row ${row.index + rowOffset}`
+      value: row.data[columnHeader]
     }));
     
     return data;
@@ -163,8 +172,7 @@ export class ComparisonEngine {
     }
     
     return Object.entries(row.data).map(([key, value]) => ({
-      value,
-      location: key
+      value
     }));
   }
   
@@ -182,15 +190,13 @@ export class ComparisonEngine {
     if (rule.elementType === 'column') {
       // Value-based column comparison: for each source value, check if it exists anywhere in the target column
       for (const sourceItem of sourceData) {
-        const found = targetData.find((t: { value: any; location: string }) =>
+        const found = targetData.find((t: { value: any }) =>
           this.valuesEqual(sourceItem.value, t.value)
         );
         if (found) {
           matches.push({
             sourceValue: sourceItem.value,
             targetValue: found.value,
-            sourceLocation: sourceItem.location,
-            targetLocation: found.location,
             sourceSpreadsheet,
             targetSpreadsheet
           });
@@ -198,8 +204,6 @@ export class ComparisonEngine {
           mismatches.push({
             sourceValue: sourceItem.value,
             targetValue: 'N/A',
-            sourceLocation: sourceItem.location,
-            targetLocation: 'Not found in target column',
             reason: 'Value not found in target column',
             sourceSpreadsheet,
             targetSpreadsheet
@@ -208,15 +212,14 @@ export class ComparisonEngine {
       }
     } else {
       // For row comparisons, compare each cell in the row
-      for (const sourceItem of sourceData) {
-        const targetItem = targetData.find(t => t.location === sourceItem.location);
+      for (let i = 0; i < sourceData.length; i++) {
+        const sourceItem = sourceData[i];
+        const targetItem = targetData[i];
         
         if (!targetItem) {
           mismatches.push({
             sourceValue: sourceItem.value,
             targetValue: 'N/A',
-            sourceLocation: sourceItem.location,
-            targetLocation: sourceItem.location,
             reason: 'Column not found in target row',
             sourceSpreadsheet,
             targetSpreadsheet
@@ -228,8 +231,6 @@ export class ComparisonEngine {
           matches.push({
             sourceValue: sourceItem.value,
             targetValue: targetItem.value,
-            sourceLocation: sourceItem.location,
-            targetLocation: targetItem.location,
             sourceSpreadsheet,
             targetSpreadsheet
           });
@@ -237,8 +238,6 @@ export class ComparisonEngine {
           mismatches.push({
             sourceValue: sourceItem.value,
             targetValue: targetItem.value,
-            sourceLocation: sourceItem.location,
-            targetLocation: targetItem.location,
             reason: 'Values do not match',
             sourceSpreadsheet,
             targetSpreadsheet
@@ -283,8 +282,6 @@ export class ComparisonEngine {
         matches.push({
           sourceValue: sourceItem.value,
           targetValue: matchingTarget?.value,
-          sourceLocation: sourceItem.location,
-          targetLocation: matchingTarget?.location || 'N/A',
           sourceSpreadsheet,
           targetSpreadsheet
         });
@@ -292,8 +289,6 @@ export class ComparisonEngine {
         mismatches.push({
           sourceValue: sourceItem.value,
           targetValue: 'N/A',
-          sourceLocation: sourceItem.location,
-          targetLocation: 'N/A',
           reason: 'Value not found in target',
           sourceSpreadsheet,
           targetSpreadsheet
@@ -341,8 +336,6 @@ export class ComparisonEngine {
           matches.push({
             sourceValue: sourceItem.value,
             targetValue: target.value,
-            sourceLocation: sourceItem.location,
-            targetLocation: target.location,
             sourceSpreadsheet,
             targetSpreadsheet
           });
@@ -351,8 +344,6 @@ export class ComparisonEngine {
         mismatches.push({
           sourceValue: sourceItem.value,
           targetValue: 'N/A',
-          sourceLocation: sourceItem.location,
-          targetLocation: 'N/A',
           reason: 'No matching value found in target',
           sourceSpreadsheet,
           targetSpreadsheet
@@ -391,8 +382,6 @@ export class ComparisonEngine {
         matches.push({
           sourceValue: sourceItem.value,
           targetValue: 'Valid',
-          sourceLocation: sourceItem.location,
-          targetLocation: 'N/A',
           sourceSpreadsheet,
           targetSpreadsheet
         });
@@ -400,8 +389,6 @@ export class ComparisonEngine {
         mismatches.push({
           sourceValue: sourceItem.value,
           targetValue: 'Invalid',
-          sourceLocation: sourceItem.location,
-          targetLocation: 'N/A',
           reason: 'Value is empty or invalid',
           sourceSpreadsheet,
           targetSpreadsheet

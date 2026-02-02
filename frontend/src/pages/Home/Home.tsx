@@ -43,7 +43,7 @@ const Home = () => {
   }, [results]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background pb-16">
       <Header />
       <HeroSection onFilesSelected={addFiles} isUploading={isUploading} />
       

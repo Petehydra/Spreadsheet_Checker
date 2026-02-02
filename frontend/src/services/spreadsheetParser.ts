@@ -49,7 +49,10 @@ export class SpreadsheetParser {
           return padded;
         });
         
-        return this.parseSheet(sheetName, paddedData, maxRowFromRange);
+        // Detect merged header rows
+        const headerRowCount = this.detectHeaderRowCount(worksheet, paddedData);
+        
+        return this.parseSheet(sheetName, paddedData, maxRowFromRange, headerRowCount);
       });
       
       return {
@@ -126,6 +129,53 @@ export class SpreadsheetParser {
 
     return maxRow;
   }
+
+  /**
+   * Detect the number of header rows by checking for merged cells starting at row 0 (Excel row 1),
+   * plus any additional header rows that follow the merged cells.
+   * Returns the total number of header rows (merged + additional).
+   * If no merges start at row 0, returns 1 (single header row - most common case).
+   */
+  private detectHeaderRowCount(worksheet: XLSX.WorkSheet, paddedData: any[][]): number {
+    const merges = worksheet['!merges'] as Array<{ s: { r: number; c: number }; e: { r: number; c: number } }> | undefined;
+    if (!merges || !Array.isArray(merges)) {
+      return 1; // No merged cells detected, assume single header row (most common)
+    }
+    
+    // Find all merges that start at row 0 (Excel row 1)
+    let maxHeaderRow = 0; // Start at 0 (single header row) to detect if any merge extends beyond
+    let foundMergeAtRow0 = false;
+    for (const merge of merges) {
+      if (merge.s.r === 0) {
+        // This merge starts at row 0, so the header spans to merge.e.r
+        maxHeaderRow = Math.max(maxHeaderRow, merge.e.r);
+        foundMergeAtRow0 = true;
+      }
+    }
+    
+    if (!foundMergeAtRow0) {
+      return 1; // No merges at row 0, single header row
+    }
+    
+    // Check if there are additional header rows after the merged ones
+    // The row after the merge (maxHeaderRow + 1) might also be a header
+    let headerRowCount = maxHeaderRow + 1; // Start with merged rows count
+    
+    // Check the next row to see if it's also a header (has content that looks like headers)
+    // We'll check if the row after the merge has any content - if so, it's likely another header row
+    if (paddedData.length > headerRowCount) {
+      const nextRow = paddedData[headerRowCount];
+      // If the next row has content, assume it's an additional header row
+      const hasContent = nextRow && nextRow.some((cell: any) => 
+        cell !== null && cell !== undefined && cell !== ''
+      );
+      if (hasContent) {
+        headerRowCount++; // Add one more header row
+      }
+    }
+    
+    return headerRowCount;
+  }
   
   /**
    * Parse a single sheet's data into structured format.
@@ -133,7 +183,7 @@ export class SpreadsheetParser {
    *        When set, used for metadata.rowCount so the UI shows the correct row count even when
    *        sheet_to_json drops completely empty rows.
    */
-  private parseSheet(name: string, rawData: any[][], maxRowFromRange?: number): SpreadsheetSheet {
+  private parseSheet(name: string, rawData: any[][], maxRowFromRange?: number, headerRowCount: number = 1): SpreadsheetSheet {
     if (!rawData || rawData.length === 0) {
       return {
         name,
@@ -141,18 +191,21 @@ export class SpreadsheetParser {
         rows: [],
         metadata: {
           rowCount: maxRowFromRange ?? 0,
-          columnCount: 0
+          columnCount: 0,
+          headerRowCount
         }
       };
     }
 
     // Headers from first row (for row data keys)
+    // headerRowCount is always >= 1 (detected merged headers or defaults to 1)
     const headers = rawData[0] || [];
     // Columns: only include a column if any cell in that column has content (any form of value)
     const columns = this.extractColumnsWithContent(rawData, headers);
     
-    // Parse data rows (skip header row) - existing behaviour unchanged
-    const rows = this.extractRows(rawData.slice(1), headers);
+    // Parse data rows: skip detected header rows (including merged ones)
+    // headerRowCount tells us how many rows to skip (1 = single header, 2+ = merged headers)
+    const rows = this.extractRows(rawData.slice(headerRowCount), headers);
     
     // Row count: use the larger of (1) parsed data length and (2) worksheet range row count.
     // This ensures that when the sheet has empty/merged rows (e.g. row 2 empty), the UI
@@ -169,7 +222,8 @@ export class SpreadsheetParser {
       rows,
       metadata: {
         rowCount: actualRowCount,
-        columnCount: columns.length
+        columnCount: columns.length,
+        headerRowCount
       }
     };
   }

@@ -22,6 +22,7 @@ import {
 import { Trash2, Info, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ComparisonRule } from "../../../../shared/types";
+import arrowImg from "@/assets/Arrow.png";
 
 interface ComparisonRow {
   id: string;
@@ -36,10 +37,28 @@ const ComparisonBuilder = () => {
   const { spreadsheets } = useSpreadsheet();
   const [activeTab, setActiveTab] = useState("single");
   const bottomRef = useRef<HTMLDivElement>(null);
+  const multiTabRef = useRef<HTMLDivElement>(null);
   const [loadingColumns, setLoadingColumns] = useState<Record<string, boolean>>({});
   const [loadingRows, setLoadingRows] = useState<Record<string, boolean>>({});
   const [columnSearchQuery, setColumnSearchQuery] = useState("");
   const [rowSearchQuery, setRowSearchQuery] = useState("");
+  const [selectedRule, setSelectedRule] = useState<string | null>(null);
+  const [multiSourceRow2, setMultiSourceRow2] = useState<ComparisonRow>({
+    id: "multi-source-2",
+    spreadsheetId: "",
+    sheetName: "",
+    columnIndex: null,
+    hasHeader: null,
+    rowIndex: null,
+  });
+  const [multiTargetRow2, setMultiTargetRow2] = useState<ComparisonRow>({
+    id: "multi-target-2",
+    spreadsheetId: "",
+    sheetName: "",
+    columnIndex: null,
+    hasHeader: null,
+    rowIndex: null,
+  });
   const [sourceRow, setSourceRow] = useState<ComparisonRow>({
     id: "source",
     spreadsheetId: "",
@@ -92,7 +111,70 @@ const ComparisonBuilder = () => {
         return row;
       })
     );
+
+    // Clear Multi mode second comparison section if spreadsheet is removed
+    setMultiSourceRow2(prev => {
+      if (prev.spreadsheetId && !ids.has(prev.spreadsheetId)) {
+        return {
+          ...prev,
+          spreadsheetId: "",
+          sheetName: "",
+          columnIndex: null,
+          hasHeader: null,
+          rowIndex: null,
+        };
+      }
+      return prev;
+    });
+    setMultiTargetRow2(prev => {
+      if (prev.spreadsheetId && !ids.has(prev.spreadsheetId)) {
+        return {
+          ...prev,
+          spreadsheetId: "",
+          sheetName: "",
+          columnIndex: null,
+          hasHeader: null,
+          rowIndex: null,
+        };
+      }
+      return prev;
+    });
   }, [spreadsheets]);
+
+  // Auto-scroll to Multi tab content when Multi is selected
+  useEffect(() => {
+    if (activeTab === "multi" && multiTabRef.current) {
+      setTimeout(() => {
+        multiTabRef.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }, 100);
+    }
+  }, [activeTab]);
+
+  // In Multi mode, automatically sync spreadsheet selections from first comparison to second comparison
+  useEffect(() => {
+    if (activeTab === "multi") {
+      // Sync source spreadsheet from first comparison to second comparison
+      if (sourceRow.spreadsheetId && sourceRow.sheetName) {
+        setMultiSourceRow2(prev => ({
+          ...prev,
+          spreadsheetId: sourceRow.spreadsheetId,
+          sheetName: sourceRow.sheetName,
+        }));
+      }
+      
+      // Sync target spreadsheet from first comparison to second comparison
+      if (targetRows[0]?.spreadsheetId && targetRows[0]?.sheetName) {
+        setMultiTargetRow2(prev => ({
+          ...prev,
+          spreadsheetId: targetRows[0].spreadsheetId,
+          sheetName: targetRows[0].sheetName,
+        }));
+      }
+    }
+  }, [activeTab, sourceRow.spreadsheetId, sourceRow.sheetName, targetRows]);
 
   const { executeComparisonWithRules, isExecuting } = useComparisonEngine();
   const { toast } = useToast();
@@ -288,6 +370,63 @@ const ComparisonBuilder = () => {
     return loadingRows[key] || false;
   };
 
+  // Describe a comparison row for the summary (e.g. "Column D in Spreadsheet file.xlsx")
+  const describeComparisonRow = useCallback((row: ComparisonRow): string => {
+    if (!row.spreadsheetId) return "";
+    const fileName = spreadsheets.find(s => s.id === row.spreadsheetId)?.fileName ?? "";
+    if (!fileName) return "";
+    const spreadsheetLabel = `Spreadsheet ${fileName}`;
+    if (row.columnIndex !== null) {
+      const colLetter = indexToColumnLetter(row.columnIndex);
+      return row.sheetName ? `Column ${colLetter} in ${row.sheetName} in ${spreadsheetLabel}` : `Column ${colLetter} in ${spreadsheetLabel}`;
+    }
+    if (row.rowIndex !== null) {
+      const rowNum = row.rowIndex + 1;
+      return row.sheetName ? `Row ${rowNum} in ${row.sheetName} in ${spreadsheetLabel}` : `Row ${rowNum} in ${spreadsheetLabel}`;
+    }
+    return spreadsheetLabel;
+  }, [spreadsheets]);
+
+  // Summary text for Single tab
+  const singleSummary = useMemo(() => {
+    const sourceDesc = describeComparisonRow(sourceRow);
+    if (!sourceDesc) return null;
+    const comparisons = targetRows
+      .filter(t => t.spreadsheetId)
+      .map(t => {
+        const targetDesc = describeComparisonRow(t);
+        return targetDesc ? `Compare ${sourceDesc} with ${targetDesc}.` : null;
+      })
+      .filter(Boolean) as string[];
+    if (comparisons.length === 0) return null;
+    return comparisons.join("\n");
+  }, [sourceRow, targetRows, describeComparisonRow]);
+
+  // Summary text for Multi tab
+  const multiSummary = useMemo(() => {
+    const parts: string[] = [];
+    const sourceDesc = describeComparisonRow(sourceRow);
+    const target = targetRows[0];
+    const targetDesc = target ? describeComparisonRow(target) : "";
+    if (sourceDesc && targetDesc) {
+      parts.push(`Compare ${sourceDesc} with ${targetDesc}.`);
+      const ruleText =
+        selectedRule === "no-match-continue"
+          ? "If no match is found, continue."
+          : selectedRule === "no-match-stop"
+            ? "If no match is found, stop."
+            : null;
+      if (ruleText) parts.push(ruleText);
+    }
+    const source2Desc = describeComparisonRow(multiSourceRow2);
+    const target2Desc = describeComparisonRow(multiTargetRow2);
+    if (source2Desc && target2Desc) {
+      parts.push(`Then compare ${source2Desc} with ${target2Desc}.`);
+    }
+    if (parts.length === 0) return null;
+    return parts.join("\n");
+  }, [sourceRow, targetRows, multiSourceRow2, multiTargetRow2, selectedRule, describeComparisonRow]);
+
   // Trigger loading state when sheet is selected
   const handleSheetChange = (spreadsheetId: string, sheetName: string) => {
     if (!sheetName || !spreadsheetId) return;
@@ -419,7 +558,9 @@ const ComparisonBuilder = () => {
   const renderComparisonRow = (
     row: ComparisonRow,
     label: string,
-    updateFn: (field: keyof ComparisonRow, value: any) => void
+    updateFn: (field: keyof ComparisonRow, value: any) => void,
+    spreadsheetPlaceholder: string = "Choose spreadsheet",
+    disableSpreadsheetSelection: boolean = false
   ) => (
     <div className="flex items-center gap-3">
       <div className="flex-[2]">
@@ -427,9 +568,10 @@ const ComparisonBuilder = () => {
           key={`${row.id}-spreadsheet-${row.spreadsheetId}`}
           value={row.spreadsheetId || undefined}
           onValueChange={(value) => updateFn('spreadsheetId', value)}
+          disabled={disableSpreadsheetSelection}
         >
-          <SelectTrigger className="h-10 bg-white text-left">
-            <SelectValue placeholder="Choose spreadsheet" />
+          <SelectTrigger className={cn("h-10 bg-white text-left", disableSpreadsheetSelection && "opacity-50 cursor-not-allowed")}>
+            <SelectValue placeholder={spreadsheetPlaceholder} />
           </SelectTrigger>
           <SelectContent>
             {spreadsheets.map((s) => (
@@ -553,7 +695,7 @@ const ComparisonBuilder = () => {
               </span>
             </div>
             {row.hasHeader !== null && (
-              <SelectItem value="__clear__" className="sticky top-0 z-10 -mx-1 w-[calc(100%+0.5rem)] min-w-full bg-white border-b group hover:bg-green-600 focus:bg-green-600 data-[highlighted]:bg-green-600">
+              <SelectItem value="__clear__" className="sticky top-0 z-10 -mx-1 w-[calc(100%+0.5rem)] min-w-full bg-white border-b group hover:bg-black hover:text-white focus:bg-black focus:text-white data-[highlighted]:bg-black data-[highlighted]:text-white">
                 <span className="text-muted-foreground italic group-hover:text-white group-focus:text-white group-data-[highlighted]:text-white">Clear selection</span>
               </SelectItem>
             )}
@@ -611,8 +753,8 @@ const ComparisonBuilder = () => {
   return (
     <section className="max-w-7xl mx-auto px-8 py-8">
       <div className="bg-card rounded-2xl shadow-sm border border-border p-6">
-        <div className="flex items-center gap-2 mb-6">
-          <h2 className="text-lg font-semibold text-foreground">Comparison</h2>
+        <div className="flex items-center gap-2 mb-6 pl-0">
+          <h2 className="text-lg font-semibold text-foreground m-0">Comparison</h2>
           <TooltipProvider delayDuration={0}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -624,17 +766,30 @@ const ComparisonBuilder = () => {
                   <AlertCircle className="h-4 w-4" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent className="max-w-sm">
-                <p className="text-sm text-left">
-                  The comparison is not chronological. The system simply checks whether a value from a specific column or row in Spreadsheet 1 exists anywhere in the selected column or row in Spreadsheet 2 and so on. If a match is found, the system reports the column and row where the match is found.
-                </p>
+              <TooltipContent className="max-w-md">
+                <div className="text-sm text-left space-y-2">
+                  <p className="font-semibold">How the comparison works</p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>If you select two spreadsheets, the system will simply compare those two files.</li>
+                    <li>If you select more than two spreadsheets, the comparison works like this:
+                      <ul className="list-disc pl-4 mt-1 space-y-0.5">
+                        <li>The first spreadsheet you select is used as the source (reference).</li>
+                        <li>All other selected spreadsheets are compared against this first spreadsheet.</li>
+                        <li>The spreadsheets are not compared with each other, only with the first one.</li>
+                      </ul>
+                    </li>
+                  </ul>
+                  <p className="pt-1 font-bold">
+                    If you want a different comparison setup, change the order of the selected spreadsheets so the correct one is first.
+                  </p>
+                </div>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="flex items-center gap-3 mb-6">
-            <TabsList className="grid w-full max-w-md grid-cols-2">
+          <div className="flex items-center justify-start gap-3 mb-6 pl-0">
+            <TabsList className="grid w-full max-w-md grid-cols-2 shrink-0">
               <TabsTrigger 
                 value="single"
                 className="data-[state=active]:bg-black data-[state=active]:text-white"
@@ -658,10 +813,21 @@ const ComparisonBuilder = () => {
                     <Info className="w-4 h-4" />
                   </button>
                 </TooltipTrigger>
-                <TooltipContent className="max-w-xs">
-                  <p className="text-sm text-left">
-                    There is no requirement to include all uploaded files in the comparison. For instance, you may upload five files while selecting only two for comparison.
-                  </p>
+                <TooltipContent className="max-w-sm">
+                  <div className="text-sm text-left space-y-3">
+                    <div>
+                      <p className="font-semibold">Single mode</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        Use this mode to compare one column at a time across selected spreadsheets.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold">Multi mode</p>
+                      <p className="text-muted-foreground mt-0.5">
+                        Use this mode to create rule-based comparisons, allowing you to compare multiple columns from two spreadsheets, in a custom order.
+                      </p>
+                    </div>
+                  </div>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -679,7 +845,7 @@ const ComparisonBuilder = () => {
             <div className="flex items-center gap-3">
               <div className="flex-1">
                 {renderComparisonRow(sourceRow, "1", (field, value) =>
-                  updateSourceRow(field, value)
+                  updateSourceRow(field, value), "Choose source spreadsheet"
                 )}
               </div>
               {/* Invisible spacer to maintain alignment */}
@@ -688,21 +854,21 @@ const ComparisonBuilder = () => {
 
             {/* Separator */}
             <div className="flex items-center">
-              <span className="text-sm font-medium text-foreground">With</span>
+              <span className="text-sm font-medium text-foreground">Compare with</span>
             </div>
 
             {/* Target Rows */}
             {targetRows.map((target, index) => (
-              <>
+              <div key={`target-section-${target.id}`} className="space-y-4">
                 {index > 0 && (
-                  <div key={`sep-${target.id}`} className="flex items-center">
-                    <span className="text-sm font-medium text-foreground">With</span>
+                  <div className="flex items-center">
+                    <span className="text-sm font-medium text-foreground">And</span>
                   </div>
                 )}
-                <div key={target.id} className="flex items-center gap-3">
+                <div className="flex items-center gap-3">
                   <div className="flex-1">
                     {renderComparisonRow(target, String(index + 2), (field, value) =>
-                      updateTargetRow(index, field, value)
+                      updateTargetRow(index, field, value), "Choose spreadsheet"
                     )}
                   </div>
                   {index > 0 ? (
@@ -718,14 +884,14 @@ const ComparisonBuilder = () => {
                     <div className="flex-shrink-0 w-9 h-9" />
                   )}
                 </div>
-              </>
+              </div>
             ))}
 
             {/* Separator and Add Button - only show if there are unused spreadsheets */}
             {spreadsheets.length > targetRows.length + 1 && (
               <>
                 <div className="flex items-center">
-                  <span className="text-sm font-medium text-foreground">With</span>
+                  <span className="text-sm font-medium text-foreground">And</span>
                 </div>
 
                 <Button
@@ -738,7 +904,12 @@ const ComparisonBuilder = () => {
               </>
             )}
 
-            {/* Run Comparison Button */}
+            {/* Summary and Run Comparison Button */}
+            {singleSummary && (
+              <div className="pt-4 pb-2 rounded-md border border-border bg-muted/30 px-4 py-3">
+                <p className="text-sm text-foreground whitespace-pre-wrap">{singleSummary}</p>
+              </div>
+            )}
             <div className="pt-6">
               <Button
                 onClick={handleRunComparison}
@@ -753,10 +924,98 @@ const ComparisonBuilder = () => {
             <div ref={bottomRef} />
           </TabsContent>
 
-          <TabsContent value="multi" className="space-y-4">
+          <TabsContent value="multi" className="space-y-4" ref={multiTabRef}>
             <p className="text-sm text-muted-foreground">
-              Multi comparison feature coming soon...
+              Here you can compare multiple columns in two spreadsheets{' '}
+              <span className="text-muted-foreground/60">
+                (If you are uploading a large spreadsheet it might take some time to load columns and rows)
+              </span>
             </p>
+
+            {/* Source Row */}
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                {renderComparisonRow(sourceRow, "1", (field, value) =>
+                  updateSourceRow(field, value), "Choose source spreadsheet"
+                )}
+              </div>
+              <div className="flex-shrink-0 w-9 h-9" />
+            </div>
+
+            {/* Separator */}
+            <div className="flex items-center">
+              <span className="text-sm font-medium text-foreground">Compare with</span>
+            </div>
+
+            {/* Target Rows - Multi mode: only one target (two spreadsheets total), no Add+ */}
+            {targetRows.slice(0, 1).map((target, index) => (
+              <div key={target.id} className="flex items-center gap-3">
+                <div className="flex-1">
+                  {renderComparisonRow(target, "2", (field, value) =>
+                    updateTargetRow(0, field, value), "Choose spreadsheet"
+                  )}
+                </div>
+                <div className="flex-shrink-0 w-9 h-9" />
+              </div>
+            ))}
+
+            {/* Arrow between first and second comparison */}
+            <div className="flex justify-center my-12" aria-hidden>
+              <img
+                src={arrowImg}
+                alt=""
+                className="h-5 w-auto rotate-90 object-contain opacity-30"
+              />
+            </div>
+
+            {/* Second Comparison Section - Multi mode */}
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Second comparison step
+              </p>
+
+              {/* Source Row 2 */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  {renderComparisonRow(multiSourceRow2, "1", (field, value) =>
+                    setMultiSourceRow2(prev => ({ ...prev, [field]: value })), "Choose source spreadsheet", true
+                  )}
+                </div>
+                <div className="flex-shrink-0 w-9 h-9" />
+              </div>
+
+              {/* Separator */}
+              <div className="flex items-center">
+                <span className="text-sm font-medium text-foreground">Compare with</span>
+              </div>
+
+              {/* Target Row 2 */}
+              <div className="flex items-center gap-3">
+                <div className="flex-1">
+                  {renderComparisonRow(multiTargetRow2, "2", (field, value) =>
+                    setMultiTargetRow2(prev => ({ ...prev, [field]: value })), "Choose spreadsheet", true
+                  )}
+                </div>
+                <div className="flex-shrink-0 w-9 h-9" />
+              </div>
+            </div>
+
+            {/* Summary and Run Comparison Button */}
+            {multiSummary && (
+              <div className="pt-4 pb-2 rounded-md border border-border bg-muted/30 px-4 py-3">
+                <p className="text-sm text-foreground whitespace-pre-wrap">{multiSummary}</p>
+              </div>
+            )}
+            <div className="pt-6">
+              <Button
+                onClick={handleRunComparison}
+                disabled={isExecuting || headerMissingForColumnMode}
+                className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md hover:scale-[1.01] shadow-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isExecuting ? 'Running...' : 'Run Comparison'}
+              </Button>
+            </div>
+            <div ref={bottomRef} />
           </TabsContent>
         </Tabs>
       </div>

@@ -63,6 +63,7 @@ export interface RowData {
 export interface SheetMetadata {
   rowCount: number;
   columnCount: number;
+  headerRowCount?: number; // Number of header rows (including merged ones), defaults to 1 if headers exist
 }
 
 // Selection state for comparison configuration
@@ -136,8 +137,6 @@ export interface RuleResult {
 export interface ComparisonMatch {
   sourceValue: any;
   targetValue: any;
-  sourceLocation: string;
-  targetLocation: string;
   /** Spreadsheet file name for the source (e.g. "Reference.xlsx") */
   sourceSpreadsheet?: string;
   /** Spreadsheet file name for the target */
@@ -147,8 +146,6 @@ export interface ComparisonMatch {
 export interface ComparisonMismatch {
   sourceValue: any;
   targetValue: any;
-  sourceLocation: string;
-  targetLocation: string;
   reason: string;
   /** Spreadsheet file name for the source */
   sourceSpreadsheet?: string;
