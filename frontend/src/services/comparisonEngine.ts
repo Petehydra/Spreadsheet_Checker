@@ -139,19 +139,12 @@ export class ComparisonEngine {
     const columnHeader = sheet.columns[columnIndex].header;
     const columnLetter = this.columnIndexToLetter(columnIndex);
     
-    // Always use detected header row count from metadata (detected via merged cells)
-    // This is the actual number of header rows detected in the spreadsheet structure, 
-    // regardless of user's hasHeader selection. Detection is based on merged cells.
-    // headerRowCount defaults to 1 (single header row) if not detected
-    const headerRowCount = sheet.metadata?.headerRowCount ?? 1;
+    // sheet.rows contains data rows (header rows already excluded by parser)
+    // If user indicates hasHeader = true, skip the first data row (treating it as a header)
+    // If hasHeader = false or null, include all data rows
+    const rowsToCompare = hasHeader === true ? sheet.rows.slice(1) : sheet.rows;
     
-    // Calculate Excel row number: row.index is 0-indexed (first data row = 0)
-    // Excel row = row.index + headerRowCount + 1
-    // Example: if headerRowCount = 1 (single header), first data row (index 0) = Excel row 2
-    // Example: if headerRowCount = 2 (rows 1-2 merged), first data row (index 0) = Excel row 3
-    const rowOffset = headerRowCount + 1;
-    
-    const data = sheet.rows.map((row: any) => ({
+    const data = rowsToCompare.map((row: any) => ({
       value: row.data[columnHeader]
     }));
     

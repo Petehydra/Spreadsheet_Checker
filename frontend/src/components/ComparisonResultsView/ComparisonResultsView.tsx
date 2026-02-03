@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ export function ComparisonResultsView({
 }: ComparisonResultsViewProps) {
   const [selectedComparisonIndex, setSelectedComparisonIndex] = useState<number>(0);
   const [resultsView, setResultsView] = useState<'matches' | 'mismatches'>('matches');
+  const tableRef = useRef<HTMLDivElement>(null);
 
   // Get spreadsheet names for each comparison from matches/mismatches
   const comparisonLabels = useMemo(() => {
@@ -100,7 +101,12 @@ export function ComparisonResultsView({
                           <Button
                             variant={resultsView === 'matches' ? 'default' : 'outline'}
                             size="sm"
-                            onClick={() => setResultsView('matches')}
+                            onClick={() => {
+                              setResultsView('matches');
+                              setTimeout(() => {
+                                tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                              }, 100);
+                            }}
                             className={cn(
                               resultsView === 'matches' && "bg-green-600 text-white hover:bg-green-700 border border-transparent",
                               resultsView !== 'matches' && "border-green-600 text-green-600 hover:bg-green-50"
@@ -111,7 +117,12 @@ export function ComparisonResultsView({
                           <Button
                             variant={resultsView === 'mismatches' ? 'default' : 'outline'}
                             size="sm"
-                            onClick={() => setResultsView('mismatches')}
+                            onClick={() => {
+                              setResultsView('mismatches');
+                              setTimeout(() => {
+                                tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                              }, 100);
+                            }}
                             className={cn(
                               resultsView === 'mismatches' && "bg-red-600 text-white hover:bg-red-700 border border-transparent",
                               resultsView !== 'mismatches' && "border-red-600 text-red-600 hover:bg-red-50"
@@ -129,21 +140,23 @@ export function ComparisonResultsView({
                         </div>
                       )}
 
-                      {resultsView === 'matches' && detail.matches.length > 0 && (
-                        <MatchesTable matches={detail.matches} />
-                      )}
+                      <div ref={tableRef}>
+                        {resultsView === 'matches' && detail.matches.length > 0 && (
+                          <MatchesTable matches={detail.matches} />
+                        )}
 
-                      {resultsView === 'mismatches' && detail.mismatches.length > 0 && (
-                        <MismatchesTable mismatches={detail.mismatches} />
-                      )}
+                        {resultsView === 'mismatches' && detail.mismatches.length > 0 && (
+                          <MismatchesTable mismatches={detail.mismatches} />
+                        )}
 
-                      {resultsView === 'matches' && detail.matches.length === 0 && (
-                        <p className="text-sm text-secondary-text py-4">No matches found.</p>
-                      )}
+                        {resultsView === 'matches' && detail.matches.length === 0 && (
+                          <p className="text-sm text-secondary-text py-4">No matches found.</p>
+                        )}
 
-                      {resultsView === 'mismatches' && detail.mismatches.length === 0 && (
-                        <p className="text-sm text-secondary-text py-4">No mismatches found.</p>
-                      )}
+                        {resultsView === 'mismatches' && detail.mismatches.length === 0 && (
+                          <p className="text-sm text-secondary-text py-4">No mismatches found.</p>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
