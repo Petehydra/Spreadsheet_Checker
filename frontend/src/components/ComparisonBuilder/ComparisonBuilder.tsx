@@ -19,10 +19,27 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { Trash2, Info, Loader2, AlertCircle } from "lucide-react";
+import { Trash2, Info, Loader2, AlertCircle, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ComparisonRule } from "../../../../shared/types";
 import arrowImg from "@/assets/Arrow.png";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface ComparisonRow {
   id: string;
@@ -209,29 +226,6 @@ const ComparisonBuilder = () => {
       return null;
     }
 
-    // When comparing columns, user must choose Yes or No for the header dropdown (source and each target)
-    if (isColumnMode) {
-      if (sourceRow.hasHeader === null) {
-        toast({
-          title: 'Header not selected',
-          description: 'Please select Yes or No in the Header? dropdown for the source row.',
-          variant: 'destructive'
-        });
-        return null;
-      }
-      for (let i = 0; i < targetRows.length; i++) {
-        const target = targetRows[i];
-        if (target.spreadsheetId && target.sheetName && target.columnIndex !== null && target.hasHeader === null) {
-          toast({
-            title: 'Header not selected',
-            description: `Please select Yes or No in the Header? dropdown for comparison row ${i + 2}.`,
-            variant: 'destructive'
-          });
-          return null;
-        }
-      }
-    }
-
     const elementType = isColumnMode ? 'column' : 'row';
     const sourceIdentifier = isColumnMode ? sourceRow.columnIndex! : sourceRow.rowIndex!;
 
@@ -299,18 +293,7 @@ const ComparisonBuilder = () => {
     }
   }, [buildRulesFromSingleMode, executeComparisonWithRules]);
 
-  // When comparing columns, Run is disabled until Header? is set to Yes or No for source and each configured target
   const isColumnMode = sourceRow.columnIndex !== null;
-  const headerMissingForColumnMode =
-    isColumnMode &&
-    (sourceRow.hasHeader === null ||
-      targetRows.some(
-        (t) =>
-          t.spreadsheetId &&
-          t.sheetName &&
-          t.columnIndex !== null &&
-          t.hasHeader === null
-      ));
 
   // Convert column index to letter
   const indexToColumnLetter = (index: number): string => {
@@ -483,6 +466,30 @@ const ComparisonBuilder = () => {
   const removeTargetRow = (index: number) => {
     setTargetRows(prev => prev.filter((_, i) => i !== index));
   };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      // Combine source and target rows for reordering
+      const allRows = [sourceRow, ...targetRows];
+      const oldIndex = allRows.findIndex((item) => item.id === active.id);
+      const newIndex = allRows.findIndex((item) => item.id === over.id);
+      
+      const reorderedRows = arrayMove(allRows, oldIndex, newIndex);
+      
+      // The first row in the new order becomes the source
+      setSourceRow(reorderedRows[0]);
+      setTargetRows(reorderedRows.slice(1));
+    }
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const updateSourceRow = (field: keyof ComparisonRow, value: any) => {
     setSourceRow(prev => {
@@ -658,54 +665,7 @@ const ComparisonBuilder = () => {
         </Select>
       </div>
 
-      <div className="flex-1">
-        <Select
-          key={`${row.id}-header-${row.hasHeader}`}
-          value={row.hasHeader !== null ? String(row.hasHeader) : undefined}
-          onValueChange={(value) => updateFn('hasHeader', value === "__clear__" ? null : (value === "true"))}
-          disabled={row.columnIndex === null}
-        >
-          <SelectTrigger className={cn("h-10 bg-white text-left", row.columnIndex === null && "opacity-50")}>
-            <SelectValue placeholder="Header?" />
-          </SelectTrigger>
-          <SelectContent>
-            <div
-              className="sticky top-0 z-10 flex items-center gap-2 px-2 py-2 bg-white border-b"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <TooltipProvider delayDuration={0}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex items-center justify-center text-muted-foreground hover:text-foreground"
-                    >
-                      <Info className="h-4 w-4 shrink-0" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p className="text-sm text-left">
-                      Does your spreadsheet have headers (typically in row 1)?
-                    </p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-              <span className="text-xs text-muted-foreground">
-                Does your spreadsheet have headers (typically in row 1)?
-              </span>
-            </div>
-            {row.hasHeader !== null && (
-              <SelectItem value="__clear__" className="sticky top-0 z-10 -mx-1 w-[calc(100%+0.5rem)] min-w-full bg-white border-b group hover:bg-black hover:text-white focus:bg-black focus:text-white data-[highlighted]:bg-black data-[highlighted]:text-white">
-                <span className="text-muted-foreground italic group-hover:text-white group-focus:text-white group-data-[highlighted]:text-white">Clear selection</span>
-              </SelectItem>
-            )}
-            <SelectItem value="true">Yes</SelectItem>
-            <SelectItem value="false">No</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="flex-1">
+      <div className="flex-1 flex items-center gap-2">
         <Select
           key={`${row.id}-row-${row.rowIndex}`}
           value={row.rowIndex !== null ? String(row.rowIndex) : undefined}
@@ -746,9 +706,81 @@ const ComparisonBuilder = () => {
               ))}
           </SelectContent>
         </Select>
+        <TooltipProvider delayDuration={0}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Info className="h-4 w-4 shrink-0" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="text-sm text-left">
+                You can choose to compare either columns or rows. The system does not support comparing both at the same time.
+              </p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </div>
   );
+
+  // Sortable Row Component for drag and drop (all rows)
+  const SortableRow = ({ row, index, isSource }: { row: ComparisonRow; index: number; isSource: boolean }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: row.id });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    // Determine update function and placeholder based on position (not isSource)
+    // Position 0 is always the source row
+    const updateFn = index === 0
+      ? (field: keyof ComparisonRow, value: any) => updateSourceRow(field, value)
+      : (field: keyof ComparisonRow, value: any) => updateTargetRow(index - 1, field, value);
+    
+    const placeholder = index === 0 ? "Choose source spreadsheet" : "Choose spreadsheet";
+    const label = String(index + 1);
+
+    return (
+      <div ref={setNodeRef} style={style} className="flex items-center gap-3">
+        <button
+          {...attributes}
+          {...listeners}
+          className="flex-shrink-0 p-2 text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing transition-colors"
+          aria-label="Drag to reorder"
+        >
+          <GripVertical className="w-5 h-5" />
+        </button>
+        <div className="flex-1">
+          {renderComparisonRow(row, label, updateFn, placeholder)}
+        </div>
+        {index > 1 ? (
+          <button
+            onClick={() => removeTargetRow(index - 1)}
+            className="flex-shrink-0 p-2 text-muted-foreground hover:text-destructive transition-colors"
+            aria-label="Remove comparison row"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        ) : (
+          /* Invisible spacer to maintain alignment */
+          <div className="flex-shrink-0 w-9 h-9" />
+        )}
+      </div>
+    );
+  };
 
   return (
     <section className="max-w-7xl mx-auto px-8 py-8">
@@ -841,51 +873,35 @@ const ComparisonBuilder = () => {
               </span>
             </p>
 
-            {/* Source Row */}
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                {renderComparisonRow(sourceRow, "1", (field, value) =>
-                  updateSourceRow(field, value), "Choose source spreadsheet"
-                )}
-              </div>
-              {/* Invisible spacer to maintain alignment */}
-              <div className="flex-shrink-0 w-9 h-9" />
-            </div>
-
-            {/* Separator */}
-            <div className="flex items-center">
-              <span className="text-sm font-medium text-foreground">Compare with</span>
-            </div>
-
-            {/* Target Rows */}
-            {targetRows.map((target, index) => (
-              <div key={`target-section-${target.id}`} className="space-y-4">
-                {index > 0 && (
-                  <div className="flex items-center">
-                    <span className="text-sm font-medium text-foreground">And</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    {renderComparisonRow(target, String(index + 2), (field, value) =>
-                      updateTargetRow(index, field, value), "Choose spreadsheet"
-                    )}
-                  </div>
-                  {index > 0 ? (
-                    <button
-                      onClick={() => removeTargetRow(index)}
-                      className="flex-shrink-0 p-2 text-muted-foreground hover:text-destructive transition-colors"
-                      aria-label="Remove comparison row"
-                    >
-                      <Trash2 className="w-5 h-5" />
-                    </button>
-                  ) : (
-                    /* Invisible spacer to maintain alignment */
-                    <div className="flex-shrink-0 w-9 h-9" />
-                  )}
+            {/* All Rows with Drag and Drop (Source + Targets) */}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={[sourceRow.id, ...targetRows.map(row => row.id)]}
+                strategy={verticalListSortingStrategy}
+              >
+                <SortableRow key={sourceRow.id} row={sourceRow} index={0} isSource={true} />
+                
+                {/* Compare with separator - fixed position after first row */}
+                <div className="flex items-center">
+                  <span className="text-sm font-medium text-foreground">Compare with</span>
                 </div>
-              </div>
-            ))}
+                
+                {targetRows.map((target, index) => (
+                  <div key={`wrapper-${target.id}`}>
+                    {index > 0 && (
+                      <div className="flex items-center">
+                        <span className="text-sm font-medium text-foreground">And</span>
+                      </div>
+                    )}
+                    <SortableRow key={target.id} row={target} index={index + 1} isSource={false} />
+                  </div>
+                ))}
+              </SortableContext>
+            </DndContext>
 
             {/* Separator and Add Button - only show if there are unused spreadsheets */}
             {spreadsheets.length > targetRows.length + 1 && (
@@ -913,7 +929,7 @@ const ComparisonBuilder = () => {
             <div className="pt-6">
               <Button
                 onClick={handleRunComparison}
-                disabled={isExecuting || headerMissingForColumnMode}
+                disabled={isExecuting}
                 className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md hover:scale-[1.01] shadow-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isExecuting ? 'Running...' : 'Run Comparison'}
@@ -960,11 +976,11 @@ const ComparisonBuilder = () => {
             ))}
 
             {/* Arrow between first and second comparison */}
-            <div className="flex justify-center my-12" aria-hidden>
+            <div className="flex justify-center py-12" aria-hidden>
               <img
                 src={arrowImg}
                 alt=""
-                className="h-5 w-auto rotate-90 object-contain opacity-30"
+                className="h-7 w-auto rotate-90 object-contain opacity-30"
               />
             </div>
 
@@ -1009,7 +1025,7 @@ const ComparisonBuilder = () => {
             <div className="pt-6">
               <Button
                 onClick={handleRunComparison}
-                disabled={isExecuting || headerMissingForColumnMode}
+                disabled={isExecuting}
                 className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-md hover:scale-[1.01] shadow-sm font-semibold transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isExecuting ? 'Running...' : 'Run Comparison'}

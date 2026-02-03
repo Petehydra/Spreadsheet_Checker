@@ -139,12 +139,10 @@ export class ComparisonEngine {
     const columnHeader = sheet.columns[columnIndex].header;
     const columnLetter = this.columnIndexToLetter(columnIndex);
     
-    // sheet.rows contains data rows (header rows already excluded by parser)
-    // If user indicates hasHeader = true, skip the first data row (treating it as a header)
-    // If hasHeader = false or null, include all data rows
-    const rowsToCompare = hasHeader === true ? sheet.rows.slice(1) : sheet.rows;
-    
-    const data = rowsToCompare.map((row: any) => ({
+    // sheet.rows contains data rows (structural header rows already excluded by parser)
+    // The hasHeader parameter is kept for potential future use but currently not applied
+    // since the parser already handles header detection automatically
+    const data = sheet.rows.map((row: any) => ({
       value: row.data[columnHeader]
     }));
     
