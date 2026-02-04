@@ -286,12 +286,182 @@ const ComparisonBuilder = () => {
     return rules;
   }, [sourceRow, targetRows, toast]);
 
+  /** Build comparison rules from Multi mode form (two-step comparison). */
+  const buildRulesFromMultiMode = useCallback((): ComparisonRule[] | null => {
+    // Step 1: Validate first comparison
+    const source1 = sourceRow;
+    const target1 = targetRows[0];
+
+    if (!source1.spreadsheetId || !source1.sheetName) {
+      toast({
+        title: 'First comparison incomplete',
+        description: 'Please select spreadsheet and sheet for the first source row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    if (!target1 || !target1.spreadsheetId || !target1.sheetName) {
+      toast({
+        title: 'First comparison incomplete',
+        description: 'Please select spreadsheet and sheet for the first target row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    const isColumnMode1 = source1.columnIndex !== null;
+    const isRowMode1 = source1.rowIndex !== null;
+
+    if (!isColumnMode1 && !isRowMode1) {
+      toast({
+        title: 'First comparison incomplete',
+        description: 'Please select either a column or row for the first comparison.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    if (isColumnMode1 && isRowMode1) {
+      toast({
+        title: 'Invalid selection',
+        description: 'Please select either a column or row (not both) for the first comparison.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    const target1IsColumn = target1.columnIndex !== null;
+    const target1IsRow = target1.rowIndex !== null;
+
+    if (target1IsColumn !== isColumnMode1 || target1IsRow !== isRowMode1) {
+      toast({
+        title: 'Mismatched comparison type',
+        description: 'Both source and target must select the same type (column or row) in the first comparison.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    // Step 2: Validate second comparison
+    const source2 = multiSourceRow2;
+    const target2 = multiTargetRow2;
+
+    if (!source2.spreadsheetId || !source2.sheetName) {
+      toast({
+        title: 'Second comparison incomplete',
+        description: 'Please select spreadsheet and sheet for the second source row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    if (!target2.spreadsheetId || !target2.sheetName) {
+      toast({
+        title: 'Second comparison incomplete',
+        description: 'Please select spreadsheet and sheet for the second target row.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    const isColumnMode2 = source2.columnIndex !== null;
+    const isRowMode2 = source2.rowIndex !== null;
+
+    if (!isColumnMode2 && !isRowMode2) {
+      toast({
+        title: 'Second comparison incomplete',
+        description: 'Please select either a column or row for the second comparison.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    if (isColumnMode2 && isRowMode2) {
+      toast({
+        title: 'Invalid selection',
+        description: 'Please select either a column or row (not both) for the second comparison.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    const target2IsColumn = target2.columnIndex !== null;
+    const target2IsRow = target2.rowIndex !== null;
+
+    if (target2IsColumn !== isColumnMode2 || target2IsRow !== isRowMode2) {
+      toast({
+        title: 'Mismatched comparison type',
+        description: 'Both source and target must select the same type (column or row) in the second comparison.',
+        variant: 'destructive'
+      });
+      return null;
+    }
+
+    // Build rules for both comparisons
+    const elementType1 = isColumnMode1 ? 'column' : 'row';
+    const sourceIdentifier1 = isColumnMode1 ? source1.columnIndex! : source1.rowIndex!;
+    const targetIdentifier1 = isColumnMode1 ? target1.columnIndex! : target1.rowIndex!;
+
+    const elementType2 = isColumnMode2 ? 'column' : 'row';
+    const sourceIdentifier2 = isColumnMode2 ? source2.columnIndex! : source2.rowIndex!;
+    const targetIdentifier2 = isColumnMode2 ? target2.columnIndex! : target2.rowIndex!;
+
+    const rules: ComparisonRule[] = [
+      {
+        id: `multi-rule-1`,
+        stepNumber: 1,
+        elementType: elementType1,
+        method: 'equals',
+        source: {
+          spreadsheetId: source1.spreadsheetId,
+          sheetName: source1.sheetName,
+          elementType: elementType1,
+          elementIdentifier: sourceIdentifier1,
+          hasHeader: isColumnMode1 ? source1.hasHeader ?? undefined : undefined
+        },
+        target: {
+          spreadsheetId: target1.spreadsheetId,
+          sheetName: target1.sheetName,
+          elementType: elementType1,
+          elementIdentifier: targetIdentifier1,
+          hasHeader: isColumnMode1 ? target1.hasHeader ?? undefined : undefined
+        }
+      },
+      {
+        id: `multi-rule-2`,
+        stepNumber: 2,
+        elementType: elementType2,
+        method: 'equals',
+        source: {
+          spreadsheetId: source2.spreadsheetId,
+          sheetName: source2.sheetName,
+          elementType: elementType2,
+          elementIdentifier: sourceIdentifier2,
+          hasHeader: isColumnMode2 ? source2.hasHeader ?? undefined : undefined
+        },
+        target: {
+          spreadsheetId: target2.spreadsheetId,
+          sheetName: target2.sheetName,
+          elementType: elementType2,
+          elementIdentifier: targetIdentifier2,
+          hasHeader: isColumnMode2 ? target2.hasHeader ?? undefined : undefined
+        }
+      }
+    ];
+
+    return rules;
+  }, [sourceRow, targetRows, multiSourceRow2, multiTargetRow2, toast]);
+
   const handleRunComparison = useCallback(() => {
-    const rules = buildRulesFromSingleMode();
+    const rules = activeTab === 'multi' 
+      ? buildRulesFromMultiMode() 
+      : buildRulesFromSingleMode();
+    
     if (rules) {
       executeComparisonWithRules(rules);
     }
-  }, [buildRulesFromSingleMode, executeComparisonWithRules]);
+  }, [activeTab, buildRulesFromMultiMode, buildRulesFromSingleMode, executeComparisonWithRules]);
 
   const isColumnMode = sourceRow.columnIndex !== null;
 

@@ -141,6 +141,12 @@ export interface ComparisonMatch {
   sourceSpreadsheet?: string;
   /** Spreadsheet file name for the target */
   targetSpreadsheet?: string;
+  /** Multi mode: Step 1 source value */
+  step1SourceValue?: any;
+  /** Multi mode: Step 2 source value */
+  step2SourceValue?: any;
+  /** Multi mode: Step 2 target value */
+  step2TargetValue?: any;
 }
 
 export interface ComparisonMismatch {
@@ -151,4 +157,10 @@ export interface ComparisonMismatch {
   sourceSpreadsheet?: string;
   /** Spreadsheet file name for the target */
   targetSpreadsheet?: string;
+  /** Multi mode: Step 1 source value */
+  step1SourceValue?: any;
+  /** Multi mode: Step 2 source value */
+  step2SourceValue?: any;
+  /** Multi mode: Step 2 target value */
+  step2TargetValue?: any;
 }

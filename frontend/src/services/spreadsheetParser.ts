@@ -131,50 +131,32 @@ export class SpreadsheetParser {
   }
 
   /**
-   * Detect the number of header rows by checking for merged cells starting at row 0 (Excel row 1),
-   * plus any additional header rows that follow the merged cells.
-   * Returns the total number of header rows (merged + additional).
-   * If no merges start at row 0, returns 1 (single header row - most common case).
+   * Detect the number of merged rows at the top of the spreadsheet.
+   * Only skips merged cells starting at row 0 (Excel row 1).
+   * Returns the count of rows to skip (merged rows only).
+   * If no merges start at row 0, returns 0 (no rows to skip).
    */
   private detectHeaderRowCount(worksheet: XLSX.WorkSheet, paddedData: any[][]): number {
     const merges = worksheet['!merges'] as Array<{ s: { r: number; c: number }; e: { r: number; c: number } }> | undefined;
     if (!merges || !Array.isArray(merges)) {
-      return 1; // No merged cells detected, assume single header row (most common)
+      return 0; // No merged cells detected, no rows to skip
     }
     
     // Find all merges that start at row 0 (Excel row 1)
-    let maxHeaderRow = 0; // Start at 0 (single header row) to detect if any merge extends beyond
-    let foundMergeAtRow0 = false;
+    let maxMergedRow = -1;
     for (const merge of merges) {
       if (merge.s.r === 0) {
-        // This merge starts at row 0, so the header spans to merge.e.r
-        maxHeaderRow = Math.max(maxHeaderRow, merge.e.r);
-        foundMergeAtRow0 = true;
+        // This merge starts at row 0, track how far it extends
+        maxMergedRow = Math.max(maxMergedRow, merge.e.r);
       }
     }
     
-    if (!foundMergeAtRow0) {
-      return 1; // No merges at row 0, single header row
+    if (maxMergedRow === -1) {
+      return 0; // No merges at row 0, no rows to skip
     }
     
-    // Check if there are additional header rows after the merged ones
-    // The row after the merge (maxHeaderRow + 1) might also be a header
-    let headerRowCount = maxHeaderRow + 1; // Start with merged rows count
-    
-    // Check the next row to see if it's also a header (has content that looks like headers)
-    // We'll check if the row after the merge has any content - if so, it's likely another header row
-    if (paddedData.length > headerRowCount) {
-      const nextRow = paddedData[headerRowCount];
-      // If the next row has content, assume it's an additional header row
-      const hasContent = nextRow && nextRow.some((cell: any) => 
-        cell !== null && cell !== undefined && cell !== ''
-      );
-      if (hasContent) {
-        headerRowCount++; // Add one more header row
-      }
-    }
-    
-    return headerRowCount;
+    // Skip all merged rows (e.g., if rows 0-1 are merged, skip 2 rows)
+    return maxMergedRow + 1;
   }
   
   /**

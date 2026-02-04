@@ -26,6 +26,7 @@ interface SpreadsheetContextType {
   removeRule: (id: string) => void;
   reorderRules: (ruleIds: string[]) => void;
   clearRules: () => void;
+  setComparisonRules: (rules: ComparisonRule[]) => void;
   
   // Results management
   results: ComparisonResults | null;
@@ -144,6 +145,10 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
   const clearRules = useCallback(() => {
     setComparisonRules([]);
   }, []);
+
+  const handleSetComparisonRules = useCallback((rules: ComparisonRule[]) => {
+    setComparisonRules(rules);
+  }, []);
   
   // Results management
   const handleSetResults = useCallback((newResults: ComparisonResults) => {
@@ -171,6 +176,7 @@ export function SpreadsheetProvider({ children }: { children: ReactNode }) {
     removeRule,
     reorderRules,
     clearRules,
+    setComparisonRules: handleSetComparisonRules,
     
     results,
     setResults: handleSetResults,

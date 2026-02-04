@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -9,12 +9,13 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ComparisonMatch } from "../../../../shared/types";
+import type { ComparisonMatch, ComparisonRule } from "../../../../shared/types";
 
 const ROWS_PER_PAGE = 200;
 
 interface MatchesTableProps {
   matches: ComparisonMatch[];
+  comparisonRules?: ComparisonRule[];
 }
 
 function PageSelector({
@@ -77,16 +78,77 @@ function PageSelector({
   );
 }
 
-export function MatchesTable({ matches }: MatchesTableProps) {
+export function MatchesTable({ matches, comparisonRules = [] }: MatchesTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(matches.length / ROWS_PER_PAGE));
   const start = (currentPage - 1) * ROWS_PER_PAGE;
   const pageMatches = matches.slice(start, start + ROWS_PER_PAGE);
 
+  // Detect if this is Multi mode (2 rules with step numbers 1 and 2)
+  const isMultiMode = useMemo(() => {
+    return comparisonRules.length === 2 && 
+           comparisonRules[0]?.stepNumber === 1 && 
+           comparisonRules[1]?.stepNumber === 2;
+  }, [comparisonRules]);
+
+  // Get column/row labels for Multi mode
+  const getElementLabel = (rule: ComparisonRule | undefined) => {
+    if (!rule) return '';
+    const elementIndex = rule.source.elementIdentifier;
+    if (typeof elementIndex === 'number') {
+      if (rule.elementType === 'column') {
+        // Convert column index to letter (0-based: 0=A, 1=B, etc.)
+        let letter = '';
+        let n = elementIndex;
+        while (n >= 0) {
+          letter = String.fromCharCode((n % 26) + 65) + letter;
+          n = Math.floor(n / 26) - 1;
+        }
+        return `Column ${letter}`;
+      } else {
+        // Row index (1-based display)
+        return `Row ${elementIndex + 1}`;
+      }
+    }
+    return String(elementIndex);
+  };
+
   if (matches.length === 0) {
     return <p className="text-sm text-secondary-text">No matches found.</p>;
   }
   
+  if (isMultiMode) {
+    // Multi mode table with 4 columns
+    return (
+      <div className="rounded-md border overflow-hidden">
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[25%]">Source Spreadsheet</TableHead>
+              <TableHead className="w-[25%]">Source Value {getElementLabel(comparisonRules[0])}</TableHead>
+              <TableHead className="w-[25%]">Source Value {getElementLabel(comparisonRules[1])}</TableHead>
+              <TableHead className="w-[25%]">Conclusion</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pageMatches.map((match, index) => (
+              <TableRow key={start + index}>
+                <TableCell className="text-secondary-text">{match.sourceSpreadsheet ?? '—'}</TableCell>
+                <TableCell className="font-bold whitespace-pre-wrap break-words">{String(match.step1SourceValue ?? match.sourceValue)}</TableCell>
+                <TableCell className="font-bold whitespace-pre-wrap break-words">{String(match.step2SourceValue ?? '—')}</TableCell>
+                <TableCell className="text-green-600 text-sm whitespace-pre-wrap">
+                  Comparison 1: Match found{'\n'}
+                  Comparison 2: Match found
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
+  
+  // Single mode table with 3 columns
   return (
     <div className="rounded-md border overflow-hidden">
       <Table className="table-fixed">

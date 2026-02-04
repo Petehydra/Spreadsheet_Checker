@@ -38,11 +38,18 @@ export class ComparisonEngine {
   
   /**
    * Execute all comparison rules in order
+   * For Multi mode (2 rules), uses conditional two-step comparison
    */
   executeRules(rules: ComparisonRule[]): ComparisonResults {
     // Sort rules by step number
     const sortedRules = [...rules].sort((a, b) => a.stepNumber - b.stepNumber);
     
+    // Check if this is Multi mode (exactly 2 rules for conditional comparison)
+    if (sortedRules.length === 2 && sortedRules[0].stepNumber === 1 && sortedRules[1].stepNumber === 2) {
+      return this.executeMultiModeRules(sortedRules[0], sortedRules[1]);
+    }
+    
+    // Single mode: execute rules independently
     const results: RuleResult[] = [];
     const intermediateStorage = new Map<string, any>();
     
@@ -76,6 +83,114 @@ export class ComparisonEngine {
       details: results
     };
   }
+
+  /**
+   * Execute Multi mode conditional two-step comparison
+   * Step 1: Find matching values
+   * Step 2: For each match, verify another column in the same rows
+   */
+  private executeMultiModeRules(rule1: ComparisonRule, rule2: ComparisonRule): ComparisonResults {
+    try {
+      const matches: ComparisonMatch[] = [];
+      const mismatches: ComparisonMismatch[] = [];
+
+      // Get data for first comparison
+      const source1Data = this.getDataWithIndices(rule1.source);
+      const target1Data = this.getDataWithIndices(rule1.target);
+
+      const source1Spreadsheet = this.getSpreadsheetFileName(rule1.source.spreadsheetId);
+      const target1Spreadsheet = this.getSpreadsheetFileName(rule1.target.spreadsheetId);
+
+      // Step 1: Find matching values in first comparison
+      for (const sourceItem of source1Data) {
+        const matchingTarget = target1Data.find((t: any) =>
+          this.valuesEqual(sourceItem.value, t.value)
+        );
+
+        if (matchingTarget) {
+          // Match found in step 1, now do step 2 comparison
+          // Get the specific cell value from source2 at the sourceItem row index
+          const source2Value = this.getValueAtRowIndex(rule2.source, sourceItem.rowIndex);
+          // Get the specific cell value from target2 at the matchingTarget row index
+          const target2Value = this.getValueAtRowIndex(rule2.target, matchingTarget.rowIndex);
+
+          if (this.valuesEqual(source2Value, target2Value)) {
+            // Both comparisons match
+            matches.push({
+              sourceValue: sourceItem.value,
+              targetValue: matchingTarget.value,
+              sourceSpreadsheet: source1Spreadsheet,
+              targetSpreadsheet: target1Spreadsheet,
+              step1SourceValue: sourceItem.value,
+              step2SourceValue: source2Value,
+              step2TargetValue: target2Value
+            });
+          } else {
+            // Step 1 matched but step 2 failed
+            mismatches.push({
+              sourceValue: sourceItem.value,
+              targetValue: matchingTarget.value,
+              reason: `Comparison 1 matched, but comparison 2 failed`,
+              sourceSpreadsheet: source1Spreadsheet,
+              targetSpreadsheet: target1Spreadsheet,
+              step1SourceValue: sourceItem.value,
+              step2SourceValue: source2Value,
+              step2TargetValue: target2Value
+            });
+          }
+        } else {
+          // No match found in step 1
+          mismatches.push({
+            sourceValue: sourceItem.value,
+            targetValue: 'N/A',
+            reason: 'Found no matching value for comparison 1',
+            sourceSpreadsheet: source1Spreadsheet,
+            targetSpreadsheet: target1Spreadsheet,
+            step1SourceValue: sourceItem.value,
+            step2SourceValue: null,
+            step2TargetValue: null
+          });
+        }
+      }
+
+      const result: RuleResult = {
+        ruleId: 'multi-mode-combined',
+        stepNumber: 1,
+        status: mismatches.length === 0 ? 'passed' : 'failed',
+        matchCount: matches.length,
+        mismatchCount: mismatches.length,
+        matches,
+        mismatches
+      };
+
+      return {
+        executedAt: new Date().toISOString(),
+        totalRules: 2,
+        passedRules: result.status === 'passed' ? 1 : 0,
+        failedRules: result.status === 'failed' ? 1 : 0,
+        details: [result]
+      };
+    } catch (error) {
+      const errorResult: RuleResult = {
+        ruleId: 'multi-mode-combined',
+        stepNumber: 1,
+        status: 'error',
+        matchCount: 0,
+        mismatchCount: 0,
+        errorMessage: error instanceof Error ? error.message : 'Unknown error',
+        matches: [],
+        mismatches: []
+      };
+
+      return {
+        executedAt: new Date().toISOString(),
+        totalRules: 2,
+        passedRules: 0,
+        failedRules: 1,
+        details: [errorResult]
+      };
+    }
+  }
   
   /**
    * Execute a single comparison rule
@@ -101,18 +216,27 @@ export class ComparisonEngine {
   }
   
   /**
+   * Get sheet from spreadsheet by IDs
+   */
+  private getSheet(spreadsheetId: string, sheetName: string): any {
+    const spreadsheet = this.spreadsheets.find(s => s.id === spreadsheetId);
+    if (!spreadsheet) {
+      throw new Error(`Spreadsheet not found: ${spreadsheetId}`);
+    }
+    
+    const sheet = spreadsheet.sheets.find(sh => sh.name === sheetName);
+    if (!sheet) {
+      throw new Error(`Sheet not found: ${sheetName}`);
+    }
+    
+    return sheet;
+  }
+
+  /**
    * Get data from a spreadsheet source
    */
   private getData(source: ComparisonSource | ComparisonTarget): any[] {
-    const spreadsheet = this.spreadsheets.find(s => s.id === source.spreadsheetId);
-    if (!spreadsheet) {
-      throw new Error(`Spreadsheet not found: ${source.spreadsheetId}`);
-    }
-    
-    const sheet = spreadsheet.sheets.find(sh => sh.name === source.sheetName);
-    if (!sheet) {
-      throw new Error(`Sheet not found: ${source.sheetName}`);
-    }
+    const sheet = this.getSheet(source.spreadsheetId, source.sheetName);
     
     if (source.elementType === 'column') {
       return this.getColumnData(sheet, source.elementIdentifier, source.hasHeader);
@@ -147,6 +271,85 @@ export class ComparisonEngine {
     }));
     
     return data;
+  }
+
+  /**
+   * Get column data with row indices for Multi mode conditional comparison
+   */
+  private getDataWithIndices(source: ComparisonSource | ComparisonTarget): any[] {
+    const sheet = this.getSheet(source.spreadsheetId, source.sheetName);
+    
+    if (source.elementType === 'column') {
+      const columnIndex = typeof source.elementIdentifier === 'number' 
+        ? source.elementIdentifier 
+        : sheet.columns.findIndex((c: any) => c.header === source.elementIdentifier);
+      
+      if (columnIndex === -1) {
+        throw new Error(`Column not found: ${source.elementIdentifier}`);
+      }
+      
+      const columnHeader = sheet.columns[columnIndex].header;
+      
+      return sheet.rows.map((row: any, index: number) => ({
+        value: row.data[columnHeader],
+        rowIndex: index  // Store the row index for later lookup
+      }));
+    } else {
+      // For row comparison, return with row index
+      const rowIndex = typeof source.elementIdentifier === 'number' 
+        ? source.elementIdentifier 
+        : parseInt(String(source.elementIdentifier));
+      
+      const row = sheet.rows.find((r: any) => r.index === rowIndex);
+      if (!row) {
+        throw new Error(`Row not found: ${source.elementIdentifier}`);
+      }
+      
+      return Object.entries(row.data).map(([key, value]) => ({
+        value,
+        rowIndex: rowIndex
+      }));
+    }
+  }
+
+  /**
+   * Get a specific cell value at a given row index
+   */
+  private getValueAtRowIndex(source: ComparisonSource | ComparisonTarget, rowIndex: number): any {
+    const sheet = this.getSheet(source.spreadsheetId, source.sheetName);
+    
+    if (source.elementType === 'column') {
+      const columnIndex = typeof source.elementIdentifier === 'number' 
+        ? source.elementIdentifier 
+        : sheet.columns.findIndex((c: any) => c.header === source.elementIdentifier);
+      
+      if (columnIndex === -1) {
+        throw new Error(`Column not found: ${source.elementIdentifier}`);
+      }
+      
+      const columnHeader = sheet.columns[columnIndex].header;
+      const row = sheet.rows[rowIndex];
+      
+      if (!row) {
+        return null;
+      }
+      
+      return row.data[columnHeader];
+    } else {
+      // For row comparison, get value at specific column
+      const targetRowIndex = typeof source.elementIdentifier === 'number' 
+        ? source.elementIdentifier 
+        : parseInt(String(source.elementIdentifier));
+      
+      const row = sheet.rows.find((r: any) => r.index === targetRowIndex);
+      if (!row) {
+        return null;
+      }
+      
+      // Return the value at the specific column (using rowIndex as column index in this context)
+      const columns = Object.keys(row.data);
+      return row.data[columns[rowIndex]] || null;
+    }
   }
   
   /**

@@ -6,7 +6,7 @@ import type { ComparisonRule } from "../../../shared/types";
 
 export function useComparisonEngine() {
   const [isExecuting, setIsExecuting] = useState(false);
-  const { spreadsheets, comparisonRules, setResults } = useSpreadsheet();
+  const { spreadsheets, comparisonRules, setResults, setComparisonRules } = useSpreadsheet();
   const { toast } = useToast();
   
   const executeComparison = async () => {
@@ -57,6 +57,8 @@ export function useComparisonEngine() {
       await new Promise(resolve => setTimeout(resolve, 100));
       const engine = new ComparisonEngine(spreadsheets);
       const results = engine.executeRules(rules);
+      // Store the rules in context so ComparisonResultsView can access them
+      setComparisonRules(rules);
       setResults(results);
       toast({
         title: 'Comparison complete',

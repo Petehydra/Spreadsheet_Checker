@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -9,12 +9,13 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { ComparisonMismatch } from "../../../../shared/types";
+import type { ComparisonMismatch, ComparisonRule } from "../../../../shared/types";
 
 const ROWS_PER_PAGE = 200;
 
 interface MismatchesTableProps {
   mismatches: ComparisonMismatch[];
+  comparisonRules?: ComparisonRule[];
 }
 
 function PageSelector({
@@ -77,16 +78,86 @@ function PageSelector({
   );
 }
 
-export function MismatchesTable({ mismatches }: MismatchesTableProps) {
+export function MismatchesTable({ mismatches, comparisonRules = [] }: MismatchesTableProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(mismatches.length / ROWS_PER_PAGE));
   const start = (currentPage - 1) * ROWS_PER_PAGE;
   const pageMismatches = mismatches.slice(start, start + ROWS_PER_PAGE);
 
+  // Detect if this is Multi mode (2 rules with step numbers 1 and 2)
+  const isMultiMode = useMemo(() => {
+    return comparisonRules.length === 2 && 
+           comparisonRules[0]?.stepNumber === 1 && 
+           comparisonRules[1]?.stepNumber === 2;
+  }, [comparisonRules]);
+
+  // Get column/row labels for Multi mode
+  const getElementLabel = (rule: ComparisonRule | undefined) => {
+    if (!rule) return '';
+    const elementIndex = rule.source.elementIdentifier;
+    if (typeof elementIndex === 'number') {
+      if (rule.elementType === 'column') {
+        // Convert column index to letter (0-based: 0=A, 1=B, etc.)
+        let letter = '';
+        let n = elementIndex;
+        while (n >= 0) {
+          letter = String.fromCharCode((n % 26) + 65) + letter;
+          n = Math.floor(n / 26) - 1;
+        }
+        return `Column ${letter}`;
+      } else {
+        // Row index (1-based display)
+        return `Row ${elementIndex + 1}`;
+      }
+    }
+    return String(elementIndex);
+  };
+
+  // Generate conclusion text based on reason and step values
+  const getConclusion = (mismatch: ComparisonMismatch) => {
+    if (isMultiMode) {
+      if (mismatch.reason === 'Found no matching value for comparison 1') {
+        return 'Comparison 1: No match found';
+      } else if (mismatch.reason === 'Comparison 1 matched, but comparison 2 failed') {
+        return `Comparison 1: Match found\nComparison 2: No match found (expected: ${mismatch.step2SourceValue}, found: ${mismatch.step2TargetValue})`;
+      }
+    }
+    return mismatch.reason || 'No match found';
+  };
+
   if (mismatches.length === 0) {
     return <p className="text-sm text-secondary-text">No mismatches found.</p>;
   }
   
+  if (isMultiMode) {
+    // Multi mode table with 4 columns
+    return (
+      <div className="rounded-md border overflow-hidden">
+        <Table className="table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[25%]">Source Spreadsheet</TableHead>
+              <TableHead className="w-[25%]">Source Value {getElementLabel(comparisonRules[0])}</TableHead>
+              <TableHead className="w-[25%]">Source Value {getElementLabel(comparisonRules[1])}</TableHead>
+              <TableHead className="w-[25%]">Conclusion</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pageMismatches.map((mismatch, index) => (
+              <TableRow key={start + index}>
+                <TableCell className="text-secondary-text">{mismatch.sourceSpreadsheet ?? '—'}</TableCell>
+                <TableCell className="font-bold whitespace-pre-wrap break-words">{String(mismatch.step1SourceValue ?? mismatch.sourceValue)}</TableCell>
+                <TableCell className="font-bold whitespace-pre-wrap break-words">{mismatch.step2SourceValue !== null ? String(mismatch.step2SourceValue) : '—'}</TableCell>
+                <TableCell className="text-destructive text-sm whitespace-pre-wrap break-words">{getConclusion(mismatch)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  }
+  
+  // Single mode table with 4 columns
   return (
     <div className="rounded-md border overflow-hidden">
       <Table className="table-fixed">
